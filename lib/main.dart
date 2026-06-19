@@ -1,6 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+const int _wheelStepsPerTurn = 36;
+const int _queueMinIndex = 1;
+const int _queueLength = 24;
+const MethodChannel _hapticsChannel = MethodChannel('mass_mate/haptics');
+
+enum RangeBoundary { min, max }
 
 void main() => runApp(const MassMateApp());
 
@@ -51,24 +59,77 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double _volume = 0.62;
   int _queueIndex = 3;
   bool _isPlaying = true;
+  double _seekRemainderSeconds = 0;
+  double _queueRemainderItems = 0;
+  ({WheelMode mode, RangeBoundary boundary})? _lastBoundaryHit;
 
   void _handleWheelDelta(double turns) {
-    setState(() {
-      switch (_mode) {
-        case WheelMode.seek:
-          final seconds = _position.inSeconds + (turns * 75).round();
-          _position = Duration(
-            seconds: seconds.clamp(0, _trackLength.inSeconds),
-          );
-          break;
-        case WheelMode.volume:
-          _volume = (_volume + turns * 0.18).clamp(0, 1);
-          break;
-        case WheelMode.queue:
-          _queueIndex = (_queueIndex + (turns * 6).round()).clamp(1, 24);
-          break;
-      }
-    });
+    switch (_mode) {
+      case WheelMode.seek:
+        _seekRemainderSeconds += turns * 75;
+        final deltaSeconds = _consumeWholeUnits(_seekRemainderSeconds);
+        _seekRemainderSeconds -= deltaSeconds;
+        if (deltaSeconds == 0) return;
+
+        final nextSeconds = _position.inSeconds + deltaSeconds;
+        final clampedSeconds =
+            nextSeconds.clamp(0, _trackLength.inSeconds).toInt();
+        _pulseBoundaryHaptics(
+          WheelMode.seek,
+          _boundaryForRange(clampedSeconds, 0, _trackLength.inSeconds),
+        );
+        setState(() {
+          _position = Duration(seconds: clampedSeconds);
+        });
+        break;
+      case WheelMode.volume:
+        final nextVolume = (_volume + turns * 0.18).clamp(0.0, 1.0);
+        _pulseBoundaryHaptics(
+          WheelMode.volume,
+          _boundaryForRange(nextVolume, 0, 1),
+        );
+        setState(() {
+          _volume = nextVolume;
+        });
+        break;
+      case WheelMode.queue:
+        _queueRemainderItems += turns * 12;
+        final deltaItems = _consumeWholeUnits(_queueRemainderItems);
+        _queueRemainderItems -= deltaItems;
+        if (deltaItems == 0) return;
+
+        final nextQueueIndex = (_queueIndex + deltaItems)
+            .clamp(_queueMinIndex, _queueLength)
+            .toInt();
+        _pulseBoundaryHaptics(
+          WheelMode.queue,
+          _boundaryForRange(nextQueueIndex, _queueMinIndex, _queueLength),
+        );
+        setState(() {
+          _queueIndex = nextQueueIndex;
+        });
+        break;
+    }
+  }
+
+  int _consumeWholeUnits(double value) => value.truncate();
+
+  RangeBoundary? _boundaryForRange(num value, num min, num max) {
+    if (value <= min) return RangeBoundary.min;
+    if (value >= max) return RangeBoundary.max;
+    return null;
+  }
+
+  void _pulseBoundaryHaptics(WheelMode mode, RangeBoundary? boundary) {
+    if (boundary == null) {
+      _lastBoundaryHit = null;
+      return;
+    }
+
+    final boundaryHit = (mode: mode, boundary: boundary);
+    if (_lastBoundaryHit == boundaryHit) return;
+    _lastBoundaryHit = boundaryHit;
+    _WheelHaptics.boundaryBuzz();
   }
 
   void _cycleMode() {
@@ -84,39 +145,91 @@ class _PlayerScreenState extends State<PlayerScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            children: [
-              const _ConnectionHeader(),
-              const SizedBox(height: 20),
-              Expanded(
-                child: _NowPlayingCard(
-                  position: _position,
-                  trackLength: _trackLength,
-                  volume: _volume,
-                  queueIndex: _queueIndex,
-                  mode: _mode,
-                ),
-              ),
-              const SizedBox(height: 18),
-              _ModeSelector(
-                selectedMode: _mode,
-                onSelected: (mode) => setState(() => _mode = mode),
-              ),
-              const SizedBox(height: 20),
-              ClickWheel(
-                mode: _mode,
-                isPlaying: _isPlaying,
-                onDelta: _handleWheelDelta,
-                onCenterPressed: () => setState(() => _isPlaying = !_isPlaying),
-                onModePressed: _cycleMode,
-                onSkipBack: () => _handleWheelDelta(-0.16),
-                onSkipForward: () => _handleWheelDelta(0.16),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= 720 &&
+                  constraints.maxWidth > constraints.maxHeight) {
+                return Column(
+                  children: [
+                    const _ConnectionHeader(),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _buildNowPlayingCard()),
+                          const SizedBox(width: 24),
+                          SizedBox(
+                            width: 320,
+                            child: _buildControls(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                children: [
+                  const _ConnectionHeader(),
+                  const SizedBox(height: 12),
+                  Expanded(child: _buildNowPlayingCard()),
+                  const SizedBox(height: 14),
+                  _buildControls(showModeSelector: false),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildNowPlayingCard() {
+    return _NowPlayingCard(
+      position: _position,
+      trackLength: _trackLength,
+      volume: _volume,
+      queueIndex: _queueIndex,
+      mode: _mode,
+    );
+  }
+
+  Widget _buildControls({
+    MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start,
+    bool showModeSelector = true,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: mainAxisAlignment,
+      children: [
+        if (showModeSelector) ...[
+          _ModeSelector(
+            selectedMode: _mode,
+            onSelected: (mode) => setState(() => _mode = mode),
+          ),
+          const SizedBox(height: 20),
+        ],
+        ClickWheel(
+          mode: _mode,
+          isPlaying: _isPlaying,
+          onDelta: _handleWheelDelta,
+          onCenterPressed: () => setState(() => _isPlaying = !_isPlaying),
+          onModePressed: _cycleMode,
+          onSkipBack: () => _handleWheelDelta(-0.16),
+          onSkipForward: () => _handleWheelDelta(0.16),
+        ),
+      ],
+    );
+  }
+}
+
+class _WheelHaptics {
+  static Future<void> boundaryBuzz() {
+    return _hapticsChannel.invokeMethod<void>('boundaryBuzz');
   }
 }
 
@@ -147,11 +260,14 @@ class ClickWheel extends StatefulWidget {
 class _ClickWheelState extends State<ClickWheel> {
   Offset? _center;
   double? _lastAngle;
+  double _indicatorTurns = 0;
+  double _hapticAccumulator = 0;
 
   void _start(DragStartDetails details) {
     final box = context.findRenderObject() as RenderBox;
     _center = box.size.center(Offset.zero);
     _lastAngle = _angleFor(details.localPosition);
+    _hapticAccumulator = 0;
   }
 
   void _update(DragUpdateDetails details) {
@@ -161,7 +277,11 @@ class _ClickWheelState extends State<ClickWheel> {
     final current = _angleFor(details.localPosition);
     final delta = _normalizeRadians(current - previous);
     _lastAngle = current;
-    widget.onDelta(delta / (math.pi * 2));
+
+    final deltaTurns = delta / (math.pi * 2);
+    setState(() => _indicatorTurns = (_indicatorTurns + deltaTurns) % 1);
+    _pulseHaptics(deltaTurns);
+    widget.onDelta(deltaTurns);
   }
 
   void _end(DragEndDetails details) {
@@ -181,6 +301,15 @@ class _ClickWheelState extends State<ClickWheel> {
     return value;
   }
 
+  void _pulseHaptics(double deltaTurns) {
+    _hapticAccumulator += deltaTurns * _wheelStepsPerTurn;
+
+    while (_hapticAccumulator.abs() >= 1) {
+      HapticFeedback.mediumImpact();
+      _hapticAccumulator -= _hapticAccumulator.sign;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -188,82 +317,150 @@ class _ClickWheelState extends State<ClickWheel> {
     return Semantics(
       label: '${widget.mode.label} click wheel',
       hint: widget.mode.description,
-      child: GestureDetector(
-        onPanStart: _start,
-        onPanUpdate: _update,
-        onPanEnd: _end,
-        child: SizedBox.square(
-          dimension: 286,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  colorScheme.surfaceContainerHighest,
-                  colorScheme.surfaceContainerLow,
-                ],
+      child: SizedBox.square(
+        dimension: 300,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              stops: const [0.42, 0.43, 1],
+              colors: [
+                colorScheme.surfaceContainerLow,
+                const Color(0xFFE8E8EA),
+                const Color(0xFFAEB0B7),
+              ],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 30,
+                offset: Offset(0, 18),
               ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 30,
-                  offset: Offset(0, 18),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanStart: _start,
+                  onPanUpdate: _update,
+                  onPanEnd: _end,
                 ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned(
-                  top: 30,
-                  child: _WheelButton(
-                    icon: widget.mode.icon,
-                    label: widget.mode.label,
-                    onTap: widget.onModePressed,
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _WheelTickPainter(
+                      offsetTurns: _indicatorTurns,
+                      tickColor: const Color(0xFF6A6C73),
+                      activeColor: colorScheme.primary,
+                    ),
                   ),
                 ),
-                Positioned(
-                  left: 28,
-                  child: _WheelButton(
-                    icon: Icons.skip_previous,
-                    label: 'Back',
-                    onTap: widget.onSkipBack,
-                  ),
+              ),
+              Positioned(
+                top: 28,
+                child: _WheelTextButton(
+                  label: 'MENU',
+                  onTap: widget.onModePressed,
                 ),
-                Positioned(
-                  right: 28,
-                  child: _WheelButton(
-                    icon: Icons.skip_next,
-                    label: 'Next',
-                    onTap: widget.onSkipForward,
-                  ),
+              ),
+              Positioned(
+                left: 32,
+                child: _WheelIconButton(
+                  icon: Icons.skip_previous,
+                  label: 'Back',
+                  onTap: widget.onSkipBack,
                 ),
-                Positioned(
-                  bottom: 30,
-                  child: Text(
-                    'MENU',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
+              ),
+              Positioned(
+                right: 32,
+                child: _WheelIconButton(
+                  icon: Icons.skip_next,
+                  label: 'Next',
+                  onTap: widget.onSkipForward,
                 ),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    fixedSize: const Size.square(112),
-                    shape: const CircleBorder(),
-                    backgroundColor: colorScheme.primary,
-                    foregroundColor: colorScheme.onPrimary,
-                  ),
-                  onPressed: widget.onCenterPressed,
-                  child: Icon(
-                    widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                    size: 44,
-                  ),
+              ),
+              Positioned(
+                bottom: 28,
+                child: _WheelIconButton(
+                  icon: widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                  label: widget.isPlaying ? 'Pause' : 'Play',
+                  onTap: widget.onCenterPressed,
                 ),
-              ],
-            ),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  fixedSize: const Size.square(112),
+                  shape: const CircleBorder(),
+                  backgroundColor: colorScheme.surface,
+                  foregroundColor: colorScheme.onSurface,
+                ),
+                onPressed: widget.onCenterPressed,
+                child: Icon(
+                  widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                  size: 44,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
+  }
+}
+
+class _WheelTickPainter extends CustomPainter {
+  const _WheelTickPainter({
+    required this.offsetTurns,
+    required this.tickColor,
+    required this.activeColor,
+  });
+
+  final double offsetTurns;
+  final Color tickColor;
+  final Color activeColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final activeTick =
+        (offsetTurns * _wheelStepsPerTurn).round() % _wheelStepsPerTurn;
+    final outerRadius = size.shortestSide / 2 - 18;
+
+    for (var index = 0; index < _wheelStepsPerTurn; index += 1) {
+      final distance = _distanceFromActiveTick(index, activeTick);
+      final isActive = distance <= 2;
+      final angle = -math.pi / 2 + index * math.pi * 2 / _wheelStepsPerTurn;
+      final direction = Offset(math.cos(angle), math.sin(angle));
+      final tickLength = isActive ? 16.0 - distance * 2 : 8.0;
+      final paint = Paint()
+        ..color = isActive
+            ? activeColor.withValues(alpha: 0.85 - distance * 0.18)
+            : tickColor.withValues(alpha: 0.42)
+        ..strokeWidth = isActive ? 2.6 : 1.4
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawLine(
+        center + direction * (outerRadius - tickLength),
+        center + direction * outerRadius,
+        paint,
+      );
+    }
+  }
+
+  int _distanceFromActiveTick(int index, int activeTick) {
+    final directDistance = (index - activeTick).abs();
+    return math.min(directDistance, _wheelStepsPerTurn - directDistance);
+  }
+
+  @override
+  bool shouldRepaint(_WheelTickPainter oldDelegate) {
+    return oldDelegate.offsetTurns != offsetTurns ||
+        oldDelegate.tickColor != tickColor ||
+        oldDelegate.activeColor != activeColor;
   }
 }
 
@@ -329,7 +526,9 @@ class _NowPlayingCard extends StatelessWidget {
             const SizedBox(height: 16),
             _StatusPill(icon: mode.icon, text: '${mode.label} mode'),
             const SizedBox(height: 10),
-            Text('Volume ${(volume * 100).round()}% • Queue item $queueIndex of 24'),
+            Text(
+              'Volume ${(volume * 100).round()}% • Queue item $queueIndex of $_queueLength',
+            ),
           ],
         ),
       ),
@@ -381,8 +580,8 @@ class _ConnectionHeader extends StatelessWidget {
   }
 }
 
-class _WheelButton extends StatelessWidget {
-  const _WheelButton({
+class _WheelIconButton extends StatelessWidget {
+  const _WheelIconButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -394,10 +593,32 @@ class _WheelButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.filledTonal(
+    return IconButton(
       tooltip: label,
       onPressed: onTap,
-      icon: Icon(icon),
+      icon: Icon(icon, color: const Color(0xFF33353B), size: 30),
+    );
+  }
+}
+
+class _WheelTextButton extends StatelessWidget {
+  const _WheelTextButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xFF33353B),
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+      ),
+      child: Text(label),
     );
   }
 }

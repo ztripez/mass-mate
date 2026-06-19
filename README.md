@@ -1,6 +1,6 @@
 # Mass Mate
 
-Mass Mate is a greenfield Flutter companion player concept for Music Assistant, focused on one-handed listening controls. The first prototype centers the experience around a large click-wheel-inspired control so listeners can scrub audiobooks, make fine volume adjustments, and move through playback without targeting tiny sliders.
+Mass Mate is a greenfield Flutter companion player concept for Music Assistant, currently targeting an Android touch prototype so the click wheel can be tested on-device. The first prototype centers the experience around a large click-wheel-inspired control so listeners can scrub audiobooks, make fine volume adjustments, and move through playback without targeting tiny sliders.
 
 ## Prototype goals
 
@@ -13,7 +13,7 @@ Mass Mate is a greenfield Flutter companion player concept for Music Assistant, 
 
 ```bash
 flutter pub get
-flutter run
+flutter run -d <android-device-id>
 ```
 
 ## Current scope
