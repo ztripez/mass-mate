@@ -13,8 +13,11 @@ Mass Mate is a greenfield Flutter companion player concept for Music Assistant, 
 
 ```bash
 flutter pub get
+flutter devices
 flutter run -d <android-device-id>
 ```
+
+Use `flutter devices` to choose an attached Android device or emulator.
 
 ## Current scope
 

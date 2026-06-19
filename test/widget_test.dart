@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mass_mate/click_wheel.dart';
 import 'package:mass_mate/main.dart';
 
 const MethodChannel _hapticsChannel = MethodChannel('mass_mate/haptics');
@@ -67,6 +68,48 @@ void main() {
     );
   });
 
+  testWidgets('crossing the left angle seam does not create a jump',
+      (tester) async {
+    final platformCalls = <MethodCall>[];
+    final boundaryBuzzes = <MethodCall>[];
+    _capturePlatformCalls(platformCalls);
+    _captureBoundaryBuzzes(boundaryBuzzes);
+
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    final center = tester.getCenter(find.byType(ClickWheel));
+    final gesture = await tester.startGesture(center + const Offset(-130, -1));
+    await gesture.moveTo(center + const Offset(-130, 1));
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.text('18:42'), findsOneWidget);
+    expect(_hapticCalls(platformCalls, 'mediumImpact').length,
+        lessThanOrEqualTo(1));
+    expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
+  });
+
+  testWidgets('crossing the left angle seam in reverse does not create a jump',
+      (tester) async {
+    final platformCalls = <MethodCall>[];
+    final boundaryBuzzes = <MethodCall>[];
+    _capturePlatformCalls(platformCalls);
+    _captureBoundaryBuzzes(boundaryBuzzes);
+
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    final center = tester.getCenter(find.byType(ClickWheel));
+    final gesture = await tester.startGesture(center + const Offset(-130, 1));
+    await gesture.moveTo(center + const Offset(-130, -1));
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.text('18:42'), findsOneWidget);
+    expect(_hapticCalls(platformCalls, 'mediumImpact').length,
+        lessThanOrEqualTo(1));
+    expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
+  });
+
   testWidgets('volume max endpoint emits a double hard buzz', (tester) async {
     await _expectEndpointBuzz(
       tester,
@@ -94,6 +137,8 @@ void main() {
       dragCount: 60,
       expectedText: '00:00',
     );
+    expect(find.text('00:00'), findsOneWidget);
+    expect(find.text('-54:18'), findsOneWidget);
   });
 
   testWidgets('seek max endpoint emits a double hard buzz', (tester) async {
