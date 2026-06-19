@@ -31,9 +31,10 @@ This is a product and interaction contract only. It does not add backend playbac
 - Seek mode is preview-first. Wheel rotation changes a preview target, not the committed playback position.
 - The preview target starts from the current committed playback position when the first seek input begins.
 - Long-form seeking is first-class: users can keep rotating for large time jumps while the preview target remains visible and separate from the committed position.
-- Center press commits the active preview target and applies the seek.
+- Center press always commits the active preview target and applies the seek.
+- Additional commit triggers, such as wheel release or a short idle timeout, are part of the adaptive seek work and must be made explicit before implementation.
 - If center is pressed with no active preview, it toggles seek precision between coarse and fine seek adjustment.
-- Left/right seek actions update the preview target and require center press to commit.
+- Left/right seek actions update the preview target and follow the active seek commit policy.
 - MENU or direct mode selection cancels any active seek preview without committing it.
 - Play/pause and track transport actions must not silently commit a seek preview.
 - Preview targets clamp to the current playable range.
@@ -88,7 +89,7 @@ This is a product and interaction contract only. It does not add backend playbac
 ## Open Tuning Decisions
 
 - Exact seek speed per wheel turn and the coarse/fine seek increments.
-- Whether seek preview expires after inactivity, and the timeout duration if it does.
+- Seek commit policy: center-only versus release/idle/center, preview expiry behavior, and timeout duration.
 - Exact volume step size per detent and whether acceleration is needed for long rotations.
 - Queue page size and whether it maps to visible rows or a fixed item count.
 - Exact haptic waveform strength and platform-specific fallbacks.
