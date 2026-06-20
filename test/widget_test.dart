@@ -3,10 +3,26 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/click_wheel.dart';
 import 'package:mass_mate/main.dart';
+import 'package:mass_mate/playback/playback_duration_format.dart';
 
 const MethodChannel _hapticsChannel = MethodChannel('mass_mate/haptics');
 
 void main() {
+  test('formats long-form playback durations without hiding hours', () {
+    expect(formatPlaybackDuration(Duration.zero), '00:00');
+    expect(formatPlaybackDuration(const Duration(minutes: 54, seconds: 18)),
+        '54:18');
+    expect(formatPlaybackDuration(const Duration(hours: 1)), '1:00:00');
+    expect(
+      formatPlaybackDuration(const Duration(hours: 3, minutes: 4, seconds: 5)),
+      '3:04:05',
+    );
+    expect(
+      () => formatPlaybackDuration(const Duration(seconds: -1)),
+      throwsArgumentError,
+    );
+  });
+
   testWidgets('renders click wheel player shell on desktop', (tester) async {
     await _pumpAppAtSize(tester, const Size(800, 600));
 
@@ -36,6 +52,14 @@ void main() {
     await tester.pump();
 
     expect(find.text('Volume mode'), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('player card renders hour-long remaining time', (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('18:42'), findsOneWidget);
+    expect(find.text('-1:05:36'), findsOneWidget);
   });
 
   testWidgets('keeps wheel below player on tall Android screenshot size',
@@ -274,14 +298,14 @@ void main() {
       expectedText: '00:00',
     );
     expect(find.text('00:00'), findsOneWidget);
-    expect(find.text('-54:18'), findsOneWidget);
+    expect(find.text('-1:24:18'), findsOneWidget);
   });
 
   testWidgets('seek max endpoint emits a double hard buzz', (tester) async {
     await _expectEndpointBuzz(
       tester,
       drag: _dragWheelClockwise,
-      dragCount: 115,
+      dragCount: 220,
       expectedText: '-00:00',
     );
   });

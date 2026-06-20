@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'click_wheel.dart';
 import 'haptics.dart';
+import 'playback/playback_duration_format.dart';
 import 'playback/playback_intent.dart';
 import 'playback/playback_snapshot.dart';
 import 'playback/wheel_intent_resolver.dart';
@@ -24,7 +25,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   WheelMode _mode = WheelMode.seek;
   PlaybackSnapshot _playback = PlaybackSnapshot(
     position: const Duration(minutes: 18, seconds: 42),
-    trackLength: const Duration(minutes: 54, seconds: 18),
+    trackLength: const Duration(hours: 1, minutes: 24, seconds: 18),
     volume: 0.62,
     queueIndex: 3,
     queueMinIndex: 1,
@@ -290,8 +291,9 @@ class _NowPlayingCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_formatDuration(displayPosition)),
-                Text('-${_formatDuration(trackLength - displayPosition)}'),
+                Text(formatPlaybackDuration(displayPosition)),
+                Text(
+                    '-${formatPlaybackDuration(trackLength - displayPosition)}'),
               ],
             ),
             const SizedBox(height: 16),
@@ -302,7 +304,7 @@ class _NowPlayingCard extends StatelessWidget {
             const SizedBox(height: 10),
             if (isPreviewingSeek) ...[
               Text(
-                'Preview target ${_formatDuration(displayPosition)} • committed ${_formatDuration(position)}',
+                'Preview target ${formatPlaybackDuration(displayPosition)} • committed ${formatPlaybackDuration(position)}',
               ),
               const SizedBox(height: 10),
             ],
@@ -386,10 +388,4 @@ class _StatusPill extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatDuration(Duration duration) {
-  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-  return '$minutes:$seconds';
 }

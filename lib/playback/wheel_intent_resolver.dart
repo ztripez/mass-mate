@@ -56,13 +56,16 @@ class WheelIntentResolver {
   /// Whether a local seek preview is active and waiting for commit or cancellation.
   bool get hasActiveSeekPreview => _seekPreviewPosition != null;
 
-  void _selectMode(WheelMode mode) {
-    if (_activeMode == mode) return;
+  bool _selectMode(WheelMode mode) {
+    if (_activeMode == mode) return false;
 
+    final clearedSeekPreview =
+        mode != WheelMode.seek && _seekPreviewPosition != null;
     _activeMode = mode;
     _queueRemainderItems = 0;
     if (mode != WheelMode.seek) _seekPreviewPosition = null;
     _lastBoundaryHit = null;
+    return clearedSeekPreview;
   }
 
   /// Activates [mode] and clears state that must not carry across wheel modes.
@@ -85,25 +88,39 @@ class WheelIntentResolver {
   /// movement accumulates until at least one whole queue item is available, then returns a
   /// [SelectQueueItemPlaybackIntent] clamped to the selectable queue range.
   ///
-  /// Returns [WheelIntentResolution.none] when [gesture] has no movement or queue movement
-  /// has not crossed a whole-item step. The returned [WheelIntentResolution] may include
-  /// a [PlaybackBoundaryHit] when the mapped value newly reaches a range boundary.
+  /// Returns a local-state result when a mode change cancels an active seek preview without
+  /// producing a playback intent. Otherwise returns [WheelIntentResolution.none] when
+  /// [gesture] has no movement or queue movement has not crossed a whole-item step. The
+  /// returned [WheelIntentResolution] may include a [PlaybackBoundaryHit] when the mapped
+  /// value newly reaches a range boundary.
   WheelIntentResolution resolve({
     required WheelGesture gesture,
     required WheelMode mode,
     required PlaybackSnapshot playback,
   }) {
-    if (_activeMode != mode) _selectMode(mode);
-    if (gesture.turnDelta == 0) return const WheelIntentResolution.none();
-
-    switch (mode) {
-      case WheelMode.seek:
-        return _resolveSeek(gesture, playback);
-      case WheelMode.volume:
-        return _resolveVolume(gesture, playback);
-      case WheelMode.queue:
-        return _resolveQueue(gesture, playback);
+    final modeChangeCanceledPreview = _selectMode(mode);
+    if (gesture.turnDelta == 0) {
+      return modeChangeCanceledPreview
+          ? const WheelIntentResolution(localStateChanged: true)
+          : const WheelIntentResolution.none();
     }
+
+    final resolution = switch (mode) {
+      WheelMode.seek => _resolveSeek(gesture, playback),
+      WheelMode.volume => _resolveVolume(gesture, playback),
+      WheelMode.queue => _resolveQueue(gesture, playback),
+    };
+
+    if (modeChangeCanceledPreview &&
+        resolution.intent == null &&
+        !resolution.localStateChanged) {
+      return WheelIntentResolution(
+        boundaryHit: resolution.boundaryHit,
+        localStateChanged: true,
+      );
+    }
+
+    return resolution;
   }
 
   /// Clears the remembered [boundaryHit] so the same playback boundary can emit feedback again.
@@ -134,8 +151,12 @@ class WheelIntentResolver {
   }
 
   /// Cancels any active local seek preview without producing a playback intent.
+  ///
+  /// Canceling also clears remembered boundary feedback so a discarded seek preview cannot
+  /// suppress haptics for the next seek gesture.
   void cancelSeekPreview() {
     _seekPreviewPosition = null;
+    _lastBoundaryHit = null;
   }
 
   WheelIntentResolution _resolveSeek(

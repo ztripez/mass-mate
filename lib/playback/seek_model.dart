@@ -3,8 +3,7 @@ import '../wheel/wheel_constants.dart';
 import 'playback_intent.dart';
 import 'playback_snapshot.dart';
 
-/// Speed band selected from the amount of wheel motion in a single gesture update.
-enum SeekSpeedBand {
+enum _SeekSpeedBand {
   /// Fine movement for small adjustments near the current position.
   slow(secondsPerDetent: 5),
 
@@ -18,7 +17,7 @@ enum SeekSpeedBand {
   veryFast(secondsPerDetent: 300);
 
   /// Creates a seek speed band with the number of seek seconds applied per click-wheel detent.
-  const SeekSpeedBand({required this.secondsPerDetent});
+  const _SeekSpeedBand({required this.secondsPerDetent});
 
   /// Seek seconds applied for each wheel detent in this band.
   final int secondsPerDetent;
@@ -26,18 +25,14 @@ enum SeekSpeedBand {
 
 /// Result of updating a local seek preview target.
 final class SeekPreviewResolution {
-  /// Creates a seek preview result for [position] in [speedBand].
+  /// Creates a seek preview result for [position] and optional range [boundary].
   const SeekPreviewResolution({
     required this.position,
-    required this.speedBand,
     required this.boundary,
   });
 
   /// Preview target after applying the wheel gesture.
   final Duration position;
-
-  /// Speed band used to map the gesture into a seek delta.
-  final SeekSpeedBand speedBand;
 
   /// Playback boundary reached by the preview target, if any.
   final PlaybackRangeBoundary? boundary;
@@ -94,16 +89,15 @@ class SeekModel {
 
     return SeekPreviewResolution(
       position: position,
-      speedBand: speedBand,
       boundary: _boundaryFor(position, playback.trackLength),
     );
   }
 
-  SeekSpeedBand _bandForDetents(double detents) {
-    if (detents < 1.5) return SeekSpeedBand.slow;
-    if (detents < 3) return SeekSpeedBand.normal;
-    if (detents < 8) return SeekSpeedBand.fast;
-    return SeekSpeedBand.veryFast;
+  _SeekSpeedBand _bandForDetents(double detents) {
+    if (detents < 1.5) return _SeekSpeedBand.slow;
+    if (detents < 3) return _SeekSpeedBand.normal;
+    if (detents < 8) return _SeekSpeedBand.fast;
+    return _SeekSpeedBand.veryFast;
   }
 
   PlaybackRangeBoundary? _boundaryFor(Duration position, Duration trackLength) {

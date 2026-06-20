@@ -3,9 +3,22 @@
 Last researched: 2026-06-20
 
 This document maps Music Assistant functionality to the Mass Mate click-wheel control model.
-It extends `docs/click-wheel-contract.md`, which remains the lower-level interaction contract for ring/button behavior, haptics, accessibility, hit areas, and preview semantics.
+It extends `docs/click-wheel-contract.md`, which remains the lower-level interaction contract for the current prototype's ring/button behavior, haptics, accessibility, hit areas, and preview semantics.
 
 The goal is not to expose every Music Assistant feature through the wheel. The goal is to make the wheel the primary playback surface for mobile use, especially for long-form music, podcasts, and audiobooks where ordinary mobile sliders are painful.
+
+## Prototype versus Music Assistant target
+
+`docs/click-wheel-contract.md` is the source of truth for current prototype behavior. The matrix below describes the intended Music Assistant-integrated target when Music Assistant playback, chapter metadata, relative skip commands, precision options, and overlays exist.
+
+Current prototype seek behavior intentionally differs from the target rows in these places:
+
+- Center in Seek mode commits an active preview; with no active preview, it cycles to the next wheel mode. The Music Assistant target may later use the no-preview center action for a precision toggle or seek options.
+- Left/right in Seek mode apply the same adaptive preview movement as wheel rotation. The Music Assistant target may later prefer chapter previous/next when chapter metadata exists, or a fixed relative skip such as +/-30 seconds when it does not.
+- Center in current Volume and Queue prototype modes cycles wheel mode. The Music Assistant target rows below reserve those center actions for mute/unmute and play-selected behavior after real playback integration exists.
+- Left/right in current Volume and Queue prototype modes apply the same small movement as wheel rotation. The Music Assistant target rows below reserve those buttons for previous/next transport in Volume mode and page movement in Queue mode.
+
+Future implementation must update both this matrix and `docs/click-wheel-contract.md` when a target Music Assistant behavior becomes current prototype behavior.
 
 ## Source assumptions
 
@@ -35,14 +48,14 @@ Reference links:
 | Output surface | Choose active player/output/group | List navigation and player action sheet |
 | Playback options overlay | Shuffle, repeat, radio continuation, favorite | Small option list with explicit toggles |
 
-## Button contract extension
+## Music Assistant target button mapping
 
 | Control | Global rule | Seek mode | Volume mode | Queue mode | Browse/output overlays |
 | --- | --- | --- | --- | --- | --- |
 | Ring | Adjust the focused scalar or list | Move seek preview target | Adjust volume | Move queue cursor | Move list cursor |
-| Center | Confirm/select, never surprise-mutate | Commit active preview; no preview toggles precision | Toggle mute | Play selected queue item | Open/select focused item |
+| Center | Confirm/select, never surprise-mutate | Commit active preview; target behavior may use no-preview center for precision/options | Toggle mute | Play selected queue item | Open/select focused item |
 | MENU/top | Back first, mode-cycle second | Cancel preview and cycle mode when on Now Playing | Cycle mode when on Now Playing | Cycle mode when on Now Playing | Back/up |
-| Left/right | Transport unless local mode has stronger meaning | Chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
+| Left/right | Transport unless local mode has stronger meaning | Target behavior: chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
 | Bottom | Always play/pause committed playback | Play/pause without committing preview | Play/pause | Play/pause current playback | Play/pause current playback |
 | Center hold | Open context actions | Seek options | Volume/output options | Queue item actions | Item/player actions |
 | MENU hold | Open global surface switcher | Now Playing / Browse / Queue / Output / Settings | Same | Same | Same |
@@ -58,7 +71,7 @@ Reference links:
 | Previous / next track | Global transport | No-op | - | - | Previous / next | Play/pause | Hold left/right = rewind/fast-forward or repeated skip | `player_queues/previous`, `player_queues/next`, or `players/cmd/*` equivalents | P0 |
 | Audiobook / podcast chapter movement | Seek mode | Move seek preview | Commit preview | Cancel preview + cycle/back | Chapter prev/next if chapter data exists, else +/-30s preview | Play/pause, no preview commit | Hold left/right = continuous seek preview | `player_queues/seek`, `players/cmd/seek`, or relative skip support when available | P0 |
 | Scrub current track | Seek mode | Move preview target | Commit preview | Cancel preview + cycle/back | +/-30s or chapter movement | Play/pause, no preview commit | Center hold = precision/options | `player_queues/seek(position)` or `players/cmd/seek(position)` | P0 |
-| Fine/coarse seek precision | Seek mode | Uses active precision | Toggle precision when no preview is active | Cycle/back | Uses active precision | Play/pause | Center hold = seek options | Local resolver only until commit | P0 |
+| Fine/coarse seek precision | Seek mode | Uses active precision | Target behavior: toggle precision when no preview is active | Cycle/back | Uses active precision | Play/pause | Center hold = seek options | Local resolver only until commit | P0 |
 | Volume | Volume mode | Adjust volume | Toggle mute | Cycle/back | Previous/next track | Play/pause | Center hold = volume/output options | `players/cmd/volume_set`, `volume_up`, `volume_down` | P0 |
 | Mute | Volume mode | Adjust volume | Toggle mute | Cycle/back | Previous/next track | Play/pause | - | `players/cmd/volume_mute` or group mute equivalent | P0 |
 | Group volume | Volume mode with group active | Adjust group volume | Toggle group mute | Cycle/back | Previous/next track | Play/pause | Center hold = choose group vs member volume | `players/cmd/group_volume`, `group_volume_up/down`, `group_volume_mute` | P1 |

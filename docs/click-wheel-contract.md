@@ -23,8 +23,8 @@ This is a product and interaction contract only. It does not add backend playbac
 | Mode | Wheel rotation | Center button | Left/right | MENU |
 | --- | --- | --- | --- | --- |
 | Seek | Move preview seek target | Commit active preview; if no preview is active, cycle mode in the current prototype | Apply the same adaptive preview movement as wheel input in the current prototype | Cycle mode |
-| Volume | Fine volume adjustment | Mute/unmute | Previous/next track | Cycle mode |
-| Queue | Move queue cursor | Play selected item | Page queue backward/forward | Cycle mode |
+| Volume | Fine volume adjustment | Cycle mode in the current prototype; future integration may use this for mute/unmute | Apply the same small volume movement as wheel input in the current prototype | Cycle mode |
+| Queue | Move queue cursor | Cycle mode in the current prototype; future integration may use this for playing the selected item | Apply the same small queue movement as wheel input in the current prototype | Cycle mode |
 
 ### Seek Preview And Commit
 
@@ -67,7 +67,7 @@ This is a product and interaction contract only. It does not add backend playbac
 - The wheel exposes a mode-specific label, such as `Seek click wheel`, `Volume click wheel`, or `Queue click wheel`.
 - The wheel hint explains what rotation changes in the active mode.
 - MENU is labeled as changing the wheel mode.
-- Center uses mode-specific labels and hints: commit active preview or cycle mode with no preview in Seek, mute/unmute in Volume, and play selected item in Queue.
+- Center uses mode-specific labels and hints: commit active preview or cycle mode with no preview in Seek, and cycle mode in the current Volume and Queue prototype modes.
 - Left/right labels and hints change with the active mode.
 - Bottom play/pause label reflects the current committed playback state.
 - Seek preview state must be announced or otherwise exposed separately from committed playback position.
