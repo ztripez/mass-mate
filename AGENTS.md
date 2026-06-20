@@ -2,6 +2,18 @@
 
 Flutter prototype for a Music Assistant companion player, currently focused on an Android touch UI shell and local click-wheel interaction model.
 
+## Start here
+
+Before changing wheel, playback, Music Assistant integration, or mobile interaction behavior, read these docs:
+
+- `README.md` -- project scope and current prototype status.
+- `docs/click-wheel-contract.md` -- source of truth for click-wheel seek, volume, queue, button, haptic, accessibility, and hit-area behavior.
+- `docs/music-assistant-wheel-matrix.md` -- source of truth for how Music Assistant functionality maps to the wheel, buttons, context actions, adapter buckets, and priorities.
+- `docs/implementation-plan.md` -- staged integration plan for turning the matrix into implementation slices.
+- `docs/issue-index.md` -- active tracker entry points.
+
+Treat the contract docs as product constraints. If implementation behavior conflicts with them, either fix the implementation or deliberately update the relevant contract in the same change.
+
 ## Commands
 - If `flutter` is missing in non-interactive shells, run commands as `source "$HOME/.zshenv" && flutter ...`.
 - Put Android Gradle wrapper/cache files on the work mount: `export GRADLE_USER_HOME=/mnt/work/.gradlebuilds` before `flutter run`/`flutter build apk --debug`.
@@ -28,6 +40,10 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 
 ## Repo-specific guidance
 - Keep work within the current prototype scope unless explicitly asked: no Music Assistant API integration, auth, device discovery, or real playback control yet.
+- When Music Assistant work is explicitly requested, use `docs/music-assistant-wheel-matrix.md` and `docs/implementation-plan.md` to keep API wiring behind intent-level adapters instead of leaking MA command names into UI widgets.
+- Queue/playback preview is local-first: do not emit remote seek commands for every wheel tick; remote seek belongs on explicit commit.
+- Bottom play/pause and transport actions must never silently commit an active seek preview.
+- MENU/back must cancel active seek preview without committing it.
 - Target Android touch first for validating click-wheel feel; keep Linux as a secondary desktop smoke target.
 - Follow `analysis_options.yaml`: `package:flutter_lints/flutter.yaml` plus `prefer_const_constructors`.
 - `pubspec.lock` is not committed and `*.lock` is ignored; `pubspec.yaml` is the dependency source of truth here.
