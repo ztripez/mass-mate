@@ -206,7 +206,8 @@ void main() {
     expect(resolver.seekPreviewPosition, isNull);
   });
 
-  test('commits active seek preview only on explicit commit', () {
+  test('creates seek commit intent and clears preview only after completion',
+      () {
     final resolver = WheelIntentResolver();
 
     final preview = resolver.resolve(
@@ -217,7 +218,7 @@ void main() {
     expect(preview.localStateChanged, isTrue);
     expect(preview.intent, isNull);
 
-    final commit = resolver.commitSeekPreview();
+    final commit = resolver.resolveSeekPreviewCommit();
     expect(
       commit.intent,
       isA<SeekToPlaybackIntent>().having(
@@ -226,8 +227,14 @@ void main() {
         const Duration(minutes: 18, seconds: 47),
       ),
     );
+    expect(
+      resolver.seekPreviewPosition,
+      const Duration(minutes: 18, seconds: 47),
+    );
+
+    resolver.completeSeekPreviewCommit();
     expect(resolver.seekPreviewPosition, isNull);
-    expect(resolver.commitSeekPreview().intent, isNull);
+    expect(resolver.resolveSeekPreviewCommit().intent, isNull);
   });
 
   test('accumulates audiobook preview across updates before commit', () {
@@ -255,7 +262,7 @@ void main() {
     expect(second.intent, isNull);
     expect(resolver.seekPreviewPosition, const Duration(hours: 3));
 
-    final commit = resolver.commitSeekPreview();
+    final commit = resolver.resolveSeekPreviewCommit();
     expect(
       commit.intent,
       isA<SeekToPlaybackIntent>().having(
