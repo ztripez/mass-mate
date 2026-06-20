@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,11 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
+  static const double _compactPortraitWheelHeightFraction = 0.50;
+  static const double _portraitWheelHeightFraction = 0.46;
+  static const double _maxWideWheelDimension = 340;
+  static const double _minWideWheelDimension = 300;
+
   WheelMode _mode = WheelMode.seek;
   final WheelIntentResolver _wheelIntentResolver = WheelIntentResolver();
 
@@ -159,6 +165,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             builder: (context, constraints) {
               if (constraints.maxWidth >= 720 &&
                   constraints.maxWidth > constraints.maxHeight) {
+                final wheelDimension = _wideWheelDimension(constraints);
+                if (wheelDimension == null) {
+                  return const _UnsupportedViewportMessage();
+                }
+
                 return Column(
                   children: [
                     _ConnectionHeader(
@@ -173,9 +184,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           Expanded(child: _buildNowPlayingCard(playerState)),
                           const SizedBox(width: 24),
                           SizedBox(
-                            width: 320,
+                            width: wheelDimension,
                             child: _buildControls(
                               playerState: playerState,
+                              wheelDimension: wheelDimension,
                               mainAxisAlignment: MainAxisAlignment.center,
                             ),
                           ),
@@ -186,17 +198,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 );
               }
 
+              final wheelDimension = _portraitWheelDimension(constraints);
+              if (wheelDimension == null) {
+                return const _UnsupportedViewportMessage();
+              }
+
+              final isCompactLayout = constraints.maxHeight < 700;
+
               return Column(
                 children: [
                   _ConnectionHeader(
                     playerName: playerState.playerName,
                     connectionLabel: playerState.connectionLabel,
                   ),
-                  const SizedBox(height: 12),
-                  Expanded(child: _buildNowPlayingCard(playerState)),
-                  const SizedBox(height: 14),
+                  SizedBox(height: isCompactLayout ? 8 : 12),
+                  Expanded(
+                    child: _buildNowPlayingCard(
+                      playerState,
+                      compactLayout: isCompactLayout,
+                    ),
+                  ),
+                  SizedBox(height: isCompactLayout ? 10 : 14),
                   _buildControls(
                     playerState: playerState,
+                    wheelDimension: wheelDimension,
                     showModeSelector: false,
                   ),
                 ],
@@ -208,19 +233,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildNowPlayingCard(PlayerState playerState) {
+  Widget _buildNowPlayingCard(
+    PlayerState playerState, {
+    bool compactLayout = false,
+  }) {
     return _NowPlayingCard(
       playerState: playerState,
       seekPreviewPosition: _wheelIntentResolver.seekPreviewPosition,
       mode: _mode,
+      compactLayout: compactLayout,
     );
   }
 
   Widget _buildControls({
     required PlayerState playerState,
+    required double wheelDimension,
     MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start,
     bool showModeSelector = true,
   }) {
+    final hasActiveSeekPreview = _wheelIntentResolver.hasActiveSeekPreview;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: mainAxisAlignment,
@@ -233,8 +265,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const SizedBox(height: 20),
         ],
         ClickWheel(
+          dimension: wheelDimension,
           semanticLabel: '${_mode.label} click wheel',
           semanticHint: _mode.description,
+          centerSemanticLabel: _centerLabel(hasActiveSeekPreview),
+          centerSemanticHint: _centerHint(hasActiveSeekPreview),
+          menuSemanticLabel: 'Change wheel mode',
+          menuSemanticHint:
+              'Cancels active seek preview and moves to the next mode.',
+          backSemanticLabel: _backLabel(),
+          backSemanticHint: _backHint(),
+          forwardSemanticLabel: _forwardLabel(),
+          forwardSemanticHint: _forwardHint(),
+          playPauseSemanticHint:
+              'Toggles committed playback without committing seek preview.',
           isPlaying: playerState.isPlaying,
           onGesture: _handleWheelGesture,
           onGestureEnded: _handleWheelGestureEnded,
@@ -254,6 +298,91 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ],
     );
   }
+
+  double? _portraitWheelDimension(BoxConstraints constraints) {
+    final widthBound = constraints.maxWidth;
+    final heightFraction = constraints.maxHeight < 700
+        ? _compactPortraitWheelHeightFraction
+        : _portraitWheelHeightFraction;
+    final heightBound = constraints.maxHeight * heightFraction;
+    final availableDimension = math.min(widthBound, heightBound);
+
+    _validateFiniteWheelBudget(availableDimension);
+
+    if (availableDimension < ClickWheel.minSupportedDimension) return null;
+
+    return math.min(
+      availableDimension,
+      ClickWheel.maxSupportedDimension,
+    );
+  }
+
+  double? _wideWheelDimension(BoxConstraints constraints) {
+    final availableDimension = math.min(
+      constraints.maxHeight * 0.72,
+      _maxWideWheelDimension,
+    );
+
+    _validateFiniteWheelBudget(availableDimension);
+
+    if (availableDimension < _minWideWheelDimension) return null;
+
+    return availableDimension;
+  }
+
+  void _validateFiniteWheelBudget(double availableDimension) {
+    if (!availableDimension.isFinite) {
+      throw FlutterError(
+        'PlayerScreen requires finite layout constraints to size the click wheel.',
+      );
+    }
+  }
+
+  String _centerLabel(bool hasActiveSeekPreview) {
+    if (_mode == WheelMode.seek && hasActiveSeekPreview) {
+      return 'Commit seek preview';
+    }
+    return 'Next wheel mode';
+  }
+
+  String _centerHint(bool hasActiveSeekPreview) {
+    if (_mode == WheelMode.seek && hasActiveSeekPreview) {
+      return 'Applies the previewed seek position.';
+    }
+    return 'Cycles to the next click-wheel mode.';
+  }
+
+  String _backLabel() {
+    return switch (_mode) {
+      WheelMode.seek => 'Seek backward preview',
+      WheelMode.volume => 'Volume down',
+      WheelMode.queue => 'Queue backward',
+    };
+  }
+
+  String _backHint() {
+    return switch (_mode) {
+      WheelMode.seek => 'Moves the local seek preview backward.',
+      WheelMode.volume => 'Lowers the local demo volume.',
+      WheelMode.queue => 'Moves the queue cursor backward.',
+    };
+  }
+
+  String _forwardLabel() {
+    return switch (_mode) {
+      WheelMode.seek => 'Seek forward preview',
+      WheelMode.volume => 'Volume up',
+      WheelMode.queue => 'Queue forward',
+    };
+  }
+
+  String _forwardHint() {
+    return switch (_mode) {
+      WheelMode.seek => 'Moves the local seek preview forward.',
+      WheelMode.volume => 'Raises the local demo volume.',
+      WheelMode.queue => 'Moves the queue cursor forward.',
+    };
+  }
 }
 
 class _NowPlayingCard extends StatelessWidget {
@@ -261,11 +390,13 @@ class _NowPlayingCard extends StatelessWidget {
     required this.playerState,
     required this.seekPreviewPosition,
     required this.mode,
+    required this.compactLayout,
   });
 
   final PlayerState playerState;
   final Duration? seekPreviewPosition;
   final WheelMode mode;
+  final bool compactLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -280,60 +411,125 @@ class _NowPlayingCard extends StatelessWidget {
     final isPreviewingSeek = previewPosition != null;
 
     return Card(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final denseSpacing =
+              isPreviewingSeek || compactLayout || constraints.maxHeight < 320;
+          final hideSecondaryMetadata =
+              isPreviewingSeek || compactLayout || constraints.maxHeight < 240;
+          final padding = denseSpacing ? 14.0 : 24.0;
+          final albumRadius = denseSpacing ? 22.0 : 28.0;
+          final albumIconSize = denseSpacing ? 72.0 : 96.0;
+
+          return Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(albumRadius),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF263B80), Color(0xFF111827)],
+                      ),
+                    ),
+                    child: Icon(Icons.album, size: albumIconSize),
+                  ),
+                ),
+                SizedBox(height: denseSpacing ? 8 : 22),
+                Text(
+                  mediaItem.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: denseSpacing
+                      ? Theme.of(context).textTheme.titleLarge
+                      : Theme.of(context).textTheme.headlineSmall,
+                ),
+                if (!hideSecondaryMetadata) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    mediaItem.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+                SizedBox(height: denseSpacing ? 8 : 18),
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(formatPlaybackDuration(displayPosition)),
+                    Text(
+                      '-${formatPlaybackDuration(trackLength - displayPosition)}',
+                    ),
+                  ],
+                ),
+                SizedBox(height: denseSpacing ? 8 : 16),
+                _StatusPill(
+                  icon: isPreviewingSeek ? Icons.travel_explore : mode.icon,
+                  text:
+                      isPreviewingSeek ? 'Seek preview' : '${mode.label} mode',
+                ),
+                SizedBox(height: denseSpacing ? 8 : 10),
+                if (isPreviewingSeek) ...[
+                  _SeekPreviewHint(
+                    target: formatPlaybackDuration(displayPosition),
+                    committed: formatPlaybackDuration(position),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (!hideSecondaryMetadata)
+                  Text(
+                    'Volume ${(playback.volume * 100).round()}% • Queue item ${playback.queueIndex} of ${playback.queueMaxIndex}',
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SeekPreviewHint extends StatelessWidget {
+  const _SeekPreviewHint({required this.target, required this.committed});
+
+  final String target;
+  final String committed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF263B80), Color(0xFF111827)],
+            Text(
+              'Preview target $target • committed $committed',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w700,
                   ),
-                ),
-                child: const Icon(Icons.album, size: 96),
-              ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 4),
             Text(
-              mediaItem.title,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              mediaItem.subtitle,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 18),
-            LinearProgressIndicator(value: progress),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(formatPlaybackDuration(displayPosition)),
-                Text(
-                    '-${formatPlaybackDuration(trackLength - displayPosition)}'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _StatusPill(
-              icon: isPreviewingSeek ? Icons.travel_explore : mode.icon,
-              text: isPreviewingSeek ? 'Seek preview' : '${mode.label} mode',
-            ),
-            const SizedBox(height: 10),
-            if (isPreviewingSeek) ...[
-              Text(
-                'Preview target ${formatPlaybackDuration(displayPosition)} • committed ${formatPlaybackDuration(position)}',
-              ),
-              const SizedBox(height: 10),
-            ],
-            Text(
-              'Volume ${(playback.volume * 100).round()}% • Queue item ${playback.queueIndex} of ${playback.queueMaxIndex}',
+              'Release or center to commit • MENU cancels',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                  ),
             ),
           ],
         ),
@@ -361,6 +557,25 @@ class _ModeSelector extends StatelessWidget {
       ],
       selected: {selectedMode},
       onSelectionChanged: (selection) => onSelected(selection.single),
+    );
+  }
+}
+
+class _UnsupportedViewportMessage extends StatelessWidget {
+  const _UnsupportedViewportMessage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Viewport too small for the Mass Mate click wheel. '
+          'Use a larger phone viewport or rotate to a wider layout.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+      ),
     );
   }
 }

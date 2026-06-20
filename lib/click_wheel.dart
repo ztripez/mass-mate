@@ -28,8 +28,24 @@ class ClickWheel extends StatefulWidget {
     required this.onSkipBack,
     required this.onSkipForward,
     required this.onPlayPausePressed,
+    this.dimension = 300,
+    this.centerSemanticLabel = 'Center button',
+    this.centerSemanticHint,
+    this.menuSemanticLabel = 'MENU',
+    this.menuSemanticHint,
+    this.backSemanticLabel = 'Back',
+    this.backSemanticHint,
+    this.forwardSemanticLabel = 'Next',
+    this.forwardSemanticHint,
+    this.playPauseSemanticHint,
     super.key,
   });
+
+  /// Smallest supported wheel diameter in logical pixels.
+  static const double minSupportedDimension = 260;
+
+  /// Largest supported wheel diameter in logical pixels.
+  static const double maxSupportedDimension = 360;
 
   /// Accessibility label for the current wheel mode.
   final String semanticLabel;
@@ -63,6 +79,36 @@ class ClickWheel extends StatefulWidget {
 
   /// Called when the bottom play/pause button is pressed.
   final VoidCallback onPlayPausePressed;
+
+  /// Diameter of the circular wheel in logical pixels.
+  final double dimension;
+
+  /// Accessibility label for the center button.
+  final String centerSemanticLabel;
+
+  /// Accessibility hint for the center button.
+  final String? centerSemanticHint;
+
+  /// Accessibility label for the top MENU button.
+  final String menuSemanticLabel;
+
+  /// Accessibility hint for the top MENU button.
+  final String? menuSemanticHint;
+
+  /// Accessibility label for the left/back button.
+  final String backSemanticLabel;
+
+  /// Accessibility hint for the left/back button.
+  final String? backSemanticHint;
+
+  /// Accessibility label for the right/forward button.
+  final String forwardSemanticLabel;
+
+  /// Accessibility hint for the right/forward button.
+  final String? forwardSemanticHint;
+
+  /// Accessibility hint for the bottom play/pause button.
+  final String? playPauseSemanticHint;
 
   @override
   State<ClickWheel> createState() => _ClickWheelState();
@@ -154,12 +200,17 @@ class _ClickWheelState extends State<ClickWheel> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final dimension = widget.dimension;
+    _validateDimension(dimension);
+
+    final geometry = _ClickWheelGeometry.forDimension(dimension);
+    geometry.validateFits(dimension);
 
     return Semantics(
       label: widget.semanticLabel,
       hint: widget.semanticHint,
       child: SizedBox.square(
-        dimension: 300,
+        dimension: dimension,
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -203,51 +254,130 @@ class _ClickWheelState extends State<ClickWheel> {
                 ),
               ),
               Positioned(
-                top: 28,
+                top: geometry.verticalInset,
                 child: _WheelTextButton(
                   label: 'MENU',
+                  semanticLabel: widget.menuSemanticLabel,
+                  semanticHint: widget.menuSemanticHint,
+                  minimumSize: Size(geometry.textButtonWidth, geometry.hitSize),
                   onTap: widget.onModePressed,
                 ),
               ),
               Positioned(
-                left: 32,
+                left: geometry.horizontalInset,
                 child: _WheelIconButton(
                   icon: Icons.skip_previous,
-                  label: 'Back',
+                  label: widget.backSemanticLabel,
+                  semanticHint: widget.backSemanticHint,
+                  hitSize: geometry.hitSize,
+                  iconSize: geometry.iconSize,
                   onTap: widget.onSkipBack,
                 ),
               ),
               Positioned(
-                right: 32,
+                right: geometry.horizontalInset,
                 child: _WheelIconButton(
                   icon: Icons.skip_next,
-                  label: 'Next',
+                  label: widget.forwardSemanticLabel,
+                  semanticHint: widget.forwardSemanticHint,
+                  hitSize: geometry.hitSize,
+                  iconSize: geometry.iconSize,
                   onTap: widget.onSkipForward,
                 ),
               ),
               Positioned(
-                bottom: 28,
+                bottom: geometry.verticalInset,
                 child: _WheelIconButton(
                   icon: widget.isPlaying ? Icons.pause : Icons.play_arrow,
                   label: widget.isPlaying ? 'Pause' : 'Play',
+                  semanticHint: widget.playPauseSemanticHint,
+                  hitSize: geometry.hitSize,
+                  iconSize: geometry.iconSize,
                   onTap: widget.onPlayPausePressed,
                 ),
               ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  fixedSize: const Size.square(112),
-                  shape: const CircleBorder(),
-                  backgroundColor: colorScheme.surface,
-                  foregroundColor: colorScheme.onSurface,
+              Semantics(
+                label: widget.centerSemanticLabel,
+                hint: widget.centerSemanticHint,
+                button: true,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    fixedSize: Size.square(geometry.centerButtonSize),
+                    shape: const CircleBorder(),
+                    backgroundColor: colorScheme.surface,
+                    foregroundColor: colorScheme.onSurface,
+                  ),
+                  onPressed: widget.onCenterPressed,
+                  child: const SizedBox.shrink(),
                 ),
-                onPressed: widget.onCenterPressed,
-                child: const SizedBox.shrink(),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _validateDimension(double dimension) {
+    if (!dimension.isFinite ||
+        dimension < ClickWheel.minSupportedDimension ||
+        dimension > ClickWheel.maxSupportedDimension) {
+      throw FlutterError(
+        'ClickWheel dimension must be finite and between '
+        '${ClickWheel.minSupportedDimension.toStringAsFixed(0)} and '
+        '${ClickWheel.maxSupportedDimension.toStringAsFixed(0)} logical pixels; '
+        'received $dimension.',
+      );
+    }
+  }
+}
+
+class _ClickWheelGeometry {
+  const _ClickWheelGeometry({
+    required this.hitSize,
+    required this.iconSize,
+    required this.textButtonWidth,
+    required this.centerButtonSize,
+    required this.verticalInset,
+    required this.horizontalInset,
+  });
+
+  factory _ClickWheelGeometry.forDimension(double dimension) {
+    final normalized = (dimension - ClickWheel.minSupportedDimension) /
+        (ClickWheel.maxSupportedDimension - ClickWheel.minSupportedDimension);
+
+    return _ClickWheelGeometry(
+      hitSize: _lerp(64, 76, normalized),
+      iconSize: _lerp(28, 36, normalized),
+      textButtonWidth: _lerp(82, 100, normalized),
+      centerButtonSize: _lerp(96, 132, normalized),
+      verticalInset: _lerp(14, 30, normalized),
+      horizontalInset: _lerp(14, 34, normalized),
+    );
+  }
+
+  final double hitSize;
+  final double iconSize;
+  final double textButtonWidth;
+  final double centerButtonSize;
+  final double verticalInset;
+  final double horizontalInset;
+
+  void validateFits(double dimension) {
+    final centerEdge = (dimension - centerButtonSize) / 2;
+    final verticalGap = centerEdge - verticalInset - hitSize;
+    final horizontalGap = centerEdge - horizontalInset - hitSize;
+
+    if (verticalGap < 0 || horizontalGap < 0) {
+      throw FlutterError(
+        'ClickWheel controls do not fit inside a '
+        '${dimension.toStringAsFixed(0)} logical-pixel wheel without overlap.',
+      );
+    }
+  }
+
+  static double _lerp(double start, double end, double normalized) {
+    return start + (end - start) * normalized;
   }
 }
 
@@ -307,41 +437,71 @@ class _WheelIconButton extends StatelessWidget {
   const _WheelIconButton({
     required this.icon,
     required this.label,
+    required this.hitSize,
+    required this.iconSize,
     required this.onTap,
+    this.semanticHint,
   });
 
   final IconData icon;
   final String label;
+  final String? semanticHint;
+  final double hitSize;
+  final double iconSize;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: label,
-      onPressed: onTap,
-      icon: Icon(icon, color: const Color(0xFF33353B), size: 30),
+    return Semantics(
+      label: label,
+      hint: semanticHint,
+      button: true,
+      child: IconButton(
+        tooltip: label,
+        style: IconButton.styleFrom(
+          fixedSize: Size.square(hitSize),
+          minimumSize: Size.square(hitSize),
+        ),
+        onPressed: onTap,
+        icon: Icon(icon, color: const Color(0xFF33353B), size: iconSize),
+      ),
     );
   }
 }
 
 class _WheelTextButton extends StatelessWidget {
-  const _WheelTextButton({required this.label, required this.onTap});
+  const _WheelTextButton({
+    required this.label,
+    required this.semanticLabel,
+    required this.minimumSize,
+    required this.onTap,
+    this.semanticHint,
+  });
 
   final String label;
+  final String semanticLabel;
+  final String? semanticHint;
+  final Size minimumSize;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: const Color(0xFF33353B),
-        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-            ),
+    return Semantics(
+      label: semanticLabel,
+      hint: semanticHint,
+      button: true,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: const Color(0xFF33353B),
+          minimumSize: minimumSize,
+          textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
+        ),
+        child: Text(label),
       ),
-      child: Text(label),
     );
   }
 }
