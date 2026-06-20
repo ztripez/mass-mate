@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/click_wheel.dart';
 import 'package:mass_mate/main.dart';
@@ -68,6 +69,37 @@ void main() {
     );
   });
 
+  testWidgets('throws when pan update arrives before drag start',
+      (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    final detectors = tester.widgetList<GestureDetector>(
+      find.descendant(
+        of: find.byType(ClickWheel),
+        matching: find.byType(GestureDetector),
+      ),
+    );
+    final detector = detectors.singleWhere(
+      (detector) => detector.onPanUpdate != null,
+    );
+
+    expect(
+      () => detector.onPanUpdate!(
+        DragUpdateDetails(
+          globalPosition: Offset.zero,
+          localPosition: Offset.zero,
+        ),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('drag angle must be initialized'),
+        ),
+      ),
+    );
+  });
+
   testWidgets('crossing the left angle seam does not create a jump',
       (tester) async {
     final platformCalls = <MethodCall>[];
@@ -108,6 +140,27 @@ void main() {
     expect(_hapticCalls(platformCalls, 'mediumImpact').length,
         lessThanOrEqualTo(1));
     expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
+  });
+
+  testWidgets('mode cycling clears partial seek wheel accumulation',
+      (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    await _dragWheelClockwiseLessThanSeekStep(tester);
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+
+    expect(find.text('Seek mode'), findsAtLeastNWidgets(1));
+
+    await _dragWheelClockwiseLessThanSeekStep(tester);
+    await tester.pump();
+
+    expect(find.text('18:42'), findsOneWidget);
+    expect(find.text('18:43'), findsNothing);
   });
 
   testWidgets('volume max endpoint emits a double hard buzz', (tester) async {
@@ -295,6 +348,13 @@ Future<void> _dragWheelCounterClockwise(WidgetTester tester) async {
   final gesture = await tester.startGesture(center + const Offset(92, 92));
   await gesture.moveTo(center + const Offset(130, 0));
   await gesture.moveTo(center + const Offset(92, -92));
+  await gesture.up();
+}
+
+Future<void> _dragWheelClockwiseLessThanSeekStep(WidgetTester tester) async {
+  final center = tester.getCenter(find.byType(ClickWheel));
+  final gesture = await tester.startGesture(center + const Offset(130, 0));
+  await gesture.moveTo(center + const Offset(129.7, 8.2));
   await gesture.up();
 }
 

@@ -21,7 +21,7 @@ fun releaseSigningMissingProperties(): List<String> {
 fun releaseSigningConfigured(): Boolean = releaseSigningMissingProperties().isEmpty()
 
 android {
-    namespace = "com.example.mass_mate"
+    namespace = "dev.ztripez.massmate"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -31,8 +31,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.mass_mate"
+        applicationId = "dev.ztripez.massmate"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

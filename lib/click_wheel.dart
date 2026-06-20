@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'haptics.dart';
-import 'wheel_mode.dart';
+import 'wheel/wheel_gesture.dart';
 
 const int _wheelStepsPerTurn = 36;
 
@@ -14,13 +14,14 @@ const int _wheelStepsPerTurn = 36;
 /// The click wheel converts pan gestures around its center into signed fractions of a
 /// full turn. Positive values represent clockwise movement and negative values represent
 /// counterclockwise movement. It emits medium haptic feedback for stepped wheel ticks and
-/// delegates transport, mode, and center-button actions to callbacks supplied by its parent.
+/// delegates visible button regions to callbacks supplied by its parent.
 class ClickWheel extends StatefulWidget {
-  /// Creates a click wheel for rotary playback interactions.
+  /// Creates a click wheel for rotary touch interactions.
   const ClickWheel({
-    required this.mode,
+    required this.semanticLabel,
+    required this.semanticHint,
     required this.isPlaying,
-    required this.onDelta,
+    required this.onGesture,
     required this.onCenterPressed,
     required this.onModePressed,
     required this.onSkipBack,
@@ -29,14 +30,17 @@ class ClickWheel extends StatefulWidget {
     super.key,
   });
 
-  /// Current interaction mode used for the semantic label and hint text.
-  final WheelMode mode;
+  /// Accessibility label for the current wheel mode.
+  final String semanticLabel;
+
+  /// Accessibility hint for the current wheel mode.
+  final String semanticHint;
 
   /// Whether the bottom transport control displays pause instead of play.
   final bool isPlaying;
 
-  /// Called when rotary dragging produces signed movement measured in full turns.
-  final ValueChanged<double> onDelta;
+  /// Called when rotary dragging produces a signed wheel gesture.
+  final ValueChanged<WheelGesture> onGesture;
 
   /// Called when the center select button is pressed.
   final VoidCallback onCenterPressed;
@@ -72,7 +76,11 @@ class _ClickWheelState extends State<ClickWheel> {
 
   void _update(DragUpdateDetails details) {
     final previous = _lastAngle;
-    if (previous == null) return;
+    if (previous == null) {
+      throw StateError(
+        'Click wheel drag angle must be initialized before pan updates.',
+      );
+    }
 
     final current = _angleFor(details.localPosition);
     final delta = _normalizeRadians(current - previous);
@@ -81,7 +89,7 @@ class _ClickWheelState extends State<ClickWheel> {
     final deltaTurns = delta / (math.pi * 2);
     setState(() => _indicatorTurns = (_indicatorTurns + deltaTurns) % 1);
     _pulseHaptics(deltaTurns);
-    widget.onDelta(deltaTurns);
+    widget.onGesture(WheelGesture(turnDelta: deltaTurns));
   }
 
   void _end(DragEndDetails details) {
@@ -90,7 +98,13 @@ class _ClickWheelState extends State<ClickWheel> {
   }
 
   double _angleFor(Offset localPosition) {
-    final center = _center ?? Offset.zero;
+    final center = _center;
+    if (center == null) {
+      throw StateError(
+        'Click wheel drag center must be initialized before resolving angles.',
+      );
+    }
+
     final vector = localPosition - center;
     return math.atan2(vector.dy, vector.dx);
   }
@@ -128,8 +142,8 @@ class _ClickWheelState extends State<ClickWheel> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Semantics(
-      label: '${widget.mode.label} click wheel',
-      hint: widget.mode.description,
+      label: widget.semanticLabel,
+      hint: widget.semanticHint,
       child: SizedBox.square(
         dimension: 300,
         child: DecoratedBox(

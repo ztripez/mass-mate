@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'click_wheel.dart';
 import 'haptics.dart';
+import 'playback/playback_intent.dart';
+import 'playback/wheel_intent_resolver.dart';
+import 'wheel/wheel_gesture.dart';
 import 'wheel_mode.dart';
-
-const int _queueMinIndex = 1;
-const int _queueLength = 24;
-
-enum _RangeBoundary { min, max }
 
 /// Player screen that displays the local playback prototype and click-wheel controls.
 class PlayerScreen extends StatefulWidget {
@@ -21,88 +19,55 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  static const Duration _trackLength = Duration(minutes: 54, seconds: 18);
-
   WheelMode _mode = WheelMode.seek;
-  Duration _position = const Duration(minutes: 18, seconds: 42);
-  double _volume = 0.62;
-  int _queueIndex = 3;
+  PlaybackSnapshot _playback = PlaybackSnapshot(
+    position: const Duration(minutes: 18, seconds: 42),
+    trackLength: const Duration(minutes: 54, seconds: 18),
+    volume: 0.62,
+    queueIndex: 3,
+    queueMinIndex: 1,
+    queueMaxIndex: 24,
+  );
   bool _isPlaying = true;
-  double _seekRemainderSeconds = 0;
-  double _queueRemainderItems = 0;
-  ({WheelMode mode, _RangeBoundary boundary})? _lastBoundaryHit;
+  final WheelIntentResolver _wheelIntentResolver = WheelIntentResolver();
 
-  void _handleWheelDelta(double turns) {
-    switch (_mode) {
-      case WheelMode.seek:
-        _seekRemainderSeconds += turns * 75;
-        final deltaSeconds = _consumeWholeUnits(_seekRemainderSeconds);
-        _seekRemainderSeconds -= deltaSeconds;
-        if (deltaSeconds == 0) return;
+  void _handleWheelGesture(WheelGesture gesture) {
+    final resolution = _wheelIntentResolver.resolve(
+      gesture: gesture,
+      mode: _mode,
+      playback: _playback,
+    );
 
-        final nextSeconds = _position.inSeconds + deltaSeconds;
-        final clampedSeconds =
-            nextSeconds.clamp(0, _trackLength.inSeconds).toInt();
-        _pulseBoundaryHaptics(
-          WheelMode.seek,
-          _boundaryForRange(clampedSeconds, 0, _trackLength.inSeconds),
-        );
-        setState(() {
-          _position = Duration(seconds: clampedSeconds);
-        });
-        break;
-      case WheelMode.volume:
-        final nextVolume = (_volume + turns * 0.18).clamp(0.0, 1.0);
-        _pulseBoundaryHaptics(
-          WheelMode.volume,
-          _boundaryForRange(nextVolume, 0, 1),
-        );
-        setState(() {
-          _volume = nextVolume;
-        });
-        break;
-      case WheelMode.queue:
-        _queueRemainderItems += turns * 12;
-        final deltaItems = _consumeWholeUnits(_queueRemainderItems);
-        _queueRemainderItems -= deltaItems;
-        if (deltaItems == 0) return;
+    _emitBoundaryFeedback(resolution.boundaryHit);
 
-        final nextQueueIndex = (_queueIndex + deltaItems)
-            .clamp(_queueMinIndex, _queueLength)
-            .toInt();
-        _pulseBoundaryHaptics(
-          WheelMode.queue,
-          _boundaryForRange(nextQueueIndex, _queueMinIndex, _queueLength),
-        );
-        setState(() {
-          _queueIndex = nextQueueIndex;
-        });
-        break;
+    final intent = resolution.intent;
+    if (intent == null) return;
+
+    setState(() => _applyPlaybackIntent(intent));
+  }
+
+  void _applyPlaybackIntent(PlaybackIntent intent) {
+    switch (intent) {
+      case SeekToPlaybackIntent(:final position):
+        _playback = _playback.copyWith(position: position);
+      case SetVolumePlaybackIntent(:final volume):
+        _playback = _playback.copyWith(volume: volume);
+      case SelectQueueItemPlaybackIntent(:final queueIndex):
+        _playback = _playback.copyWith(queueIndex: queueIndex);
     }
   }
 
-  int _consumeWholeUnits(double value) => value.truncate();
-
-  _RangeBoundary? _boundaryForRange(num value, num min, num max) {
-    if (value <= min) return _RangeBoundary.min;
-    if (value >= max) return _RangeBoundary.max;
-    return null;
+  void _emitBoundaryFeedback(PlaybackBoundaryHit? boundaryHit) {
+    if (boundaryHit == null) return;
+    _pulseBoundaryHaptics(boundaryHit);
   }
 
-  void _pulseBoundaryHaptics(WheelMode mode, _RangeBoundary? boundary) {
-    if (boundary == null) {
-      _lastBoundaryHit = null;
-      return;
-    }
-
-    final boundaryHit = (mode: mode, boundary: boundary);
-    if (_lastBoundaryHit == boundaryHit) return;
-    _lastBoundaryHit = boundaryHit;
+  void _pulseBoundaryHaptics(PlaybackBoundaryHit boundaryHit) {
     unawaited(
       WheelHaptics.boundaryBuzz()
           .catchError((Object error, StackTrace stackTrace) {
-        if (mounted && _lastBoundaryHit == boundaryHit) {
-          _lastBoundaryHit = null;
+        if (mounted) {
+          _wheelIntentResolver.forgetBoundaryHit(boundaryHit);
         }
         WheelHaptics.reportFailure(
           context: 'while emitting a click-wheel boundary haptic',
@@ -113,11 +78,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _cycleMode() {
+  void _setMode(WheelMode mode) {
+    if (_mode == mode) return;
+
     setState(() {
-      final nextIndex = (_mode.index + 1) % WheelMode.values.length;
-      _mode = WheelMode.values[nextIndex];
+      _wheelIntentResolver.activateMode(mode);
+      _mode = mode;
     });
+  }
+
+  void _cycleMode() {
+    final nextIndex = (_mode.index + 1) % WheelMode.values.length;
+    _setMode(WheelMode.values[nextIndex]);
   }
 
   @override
@@ -171,10 +143,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildNowPlayingCard() {
     return _NowPlayingCard(
-      position: _position,
-      trackLength: _trackLength,
-      volume: _volume,
-      queueIndex: _queueIndex,
+      playback: _playback,
       mode: _mode,
     );
   }
@@ -190,18 +159,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (showModeSelector) ...[
           _ModeSelector(
             selectedMode: _mode,
-            onSelected: (mode) => setState(() => _mode = mode),
+            onSelected: _setMode,
           ),
           const SizedBox(height: 20),
         ],
         ClickWheel(
-          mode: _mode,
+          semanticLabel: '${_mode.label} click wheel',
+          semanticHint: _mode.description,
           isPlaying: _isPlaying,
-          onDelta: _handleWheelDelta,
+          onGesture: _handleWheelGesture,
           onCenterPressed: _cycleMode,
           onModePressed: _cycleMode,
-          onSkipBack: () => _handleWheelDelta(-0.16),
-          onSkipForward: () => _handleWheelDelta(0.16),
+          onSkipBack: () => _handleWheelGesture(
+            WheelGesture(turnDelta: -0.16),
+          ),
+          onSkipForward: () => _handleWheelGesture(
+            WheelGesture(turnDelta: 0.16),
+          ),
           onPlayPausePressed: () => setState(() => _isPlaying = !_isPlaying),
         ),
       ],
@@ -211,21 +185,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
 class _NowPlayingCard extends StatelessWidget {
   const _NowPlayingCard({
-    required this.position,
-    required this.trackLength,
-    required this.volume,
-    required this.queueIndex,
+    required this.playback,
     required this.mode,
   });
 
-  final Duration position;
-  final Duration trackLength;
-  final double volume;
-  final int queueIndex;
+  final PlaybackSnapshot playback;
   final WheelMode mode;
 
   @override
   Widget build(BuildContext context) {
+    final position = playback.position;
+    final trackLength = playback.trackLength;
     final progress = position.inMilliseconds / trackLength.inMilliseconds;
 
     return Card(
@@ -259,7 +229,7 @@ class _NowPlayingCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 18),
-            LinearProgressIndicator(value: progress.clamp(0, 1)),
+            LinearProgressIndicator(value: progress),
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -272,7 +242,7 @@ class _NowPlayingCard extends StatelessWidget {
             _StatusPill(icon: mode.icon, text: '${mode.label} mode'),
             const SizedBox(height: 10),
             Text(
-              'Volume ${(volume * 100).round()}% • Queue item $queueIndex of $_queueLength',
+              'Volume ${(playback.volume * 100).round()}% • Queue item ${playback.queueIndex} of ${playback.queueMaxIndex}',
             ),
           ],
         ),
