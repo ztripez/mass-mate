@@ -7,7 +7,8 @@ import 'click_wheel.dart';
 import 'haptics.dart';
 import 'playback/playback_duration_format.dart';
 import 'playback/playback_intent.dart';
-import 'playback/playback_snapshot.dart';
+import 'playback/player_adapter.dart';
+import 'playback/player_state.dart';
 import 'playback/wheel_intent_resolver.dart';
 import 'wheel/wheel_gesture.dart';
 import 'wheel_mode.dart';
@@ -15,7 +16,13 @@ import 'wheel_mode.dart';
 /// Player screen that displays the local playback prototype and click-wheel controls.
 class PlayerScreen extends StatefulWidget {
   /// Creates the local player prototype screen.
-  const PlayerScreen({super.key});
+  const PlayerScreen({super.key, required this.playerAdapter});
+
+  /// Playback adapter used by the screen.
+  ///
+  /// Supplying an adapter lets the same UI render local demo state, test fakes, or a future
+  /// Music Assistant-backed player.
+  final PlayerAdapter playerAdapter;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -23,22 +30,15 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   WheelMode _mode = WheelMode.seek;
-  PlaybackSnapshot _playback = PlaybackSnapshot(
-    position: const Duration(minutes: 18, seconds: 42),
-    trackLength: const Duration(hours: 1, minutes: 24, seconds: 18),
-    volume: 0.62,
-    queueIndex: 3,
-    queueMinIndex: 1,
-    queueMaxIndex: 24,
-  );
-  bool _isPlaying = true;
   final WheelIntentResolver _wheelIntentResolver = WheelIntentResolver();
+
+  PlayerAdapter get _playerAdapter => widget.playerAdapter;
 
   void _handleWheelGesture(WheelGesture gesture) {
     final resolution = _wheelIntentResolver.resolve(
       gesture: gesture,
       mode: _mode,
-      playback: _playback,
+      playback: _playerAdapter.state.playback,
     );
 
     _emitBoundaryFeedback(resolution.boundaryHit);
@@ -49,7 +49,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    setState(() => _applyPlaybackIntent(intent));
+    _dispatchPlaybackIntent(intent);
   }
 
   void _pulseSeekCommitHaptics() {
@@ -65,24 +65,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _applyPlaybackIntent(PlaybackIntent intent) {
-    switch (intent) {
-      case SeekToPlaybackIntent(:final position):
-        _playback = _playback.copyWith(position: position);
-      case SetVolumePlaybackIntent(:final volume):
-        _playback = _playback.copyWith(volume: volume);
-      case SelectQueueItemPlaybackIntent(:final queueIndex):
-        _playback = _playback.copyWith(queueIndex: queueIndex);
-    }
+  void _dispatchPlaybackIntent(PlaybackIntent intent) {
+    unawaited(_applyPlaybackIntent(intent));
+  }
+
+  Future<void> _applyPlaybackIntent(PlaybackIntent intent) async {
+    await _playerAdapter.applyIntent(intent);
+    if (!mounted) return;
+
+    setState(() {});
   }
 
   void _commitSeekPreview() {
-    final resolution = _wheelIntentResolver.commitSeekPreview();
+    final resolution = _wheelIntentResolver.resolveSeekPreviewCommit();
     final intent = resolution.intent;
     if (intent == null) return;
 
+    unawaited(_applySeekCommitIntent(intent));
+  }
+
+  Future<void> _applySeekCommitIntent(PlaybackIntent intent) async {
+    await _playerAdapter.applyIntent(intent);
+    if (!mounted) return;
+
+    setState(_wheelIntentResolver.completeSeekPreviewCommit);
     _pulseSeekCommitHaptics();
-    setState(() => _applyPlaybackIntent(intent));
   }
 
   void _handleWheelGestureEnded() {
@@ -142,6 +149,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final playerState = _playerAdapter.state;
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -152,17 +161,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   constraints.maxWidth > constraints.maxHeight) {
                 return Column(
                   children: [
-                    const _ConnectionHeader(),
+                    _ConnectionHeader(
+                      playerName: playerState.playerName,
+                      connectionLabel: playerState.connectionLabel,
+                    ),
                     const SizedBox(height: 20),
                     Expanded(
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(child: _buildNowPlayingCard()),
+                          Expanded(child: _buildNowPlayingCard(playerState)),
                           const SizedBox(width: 24),
                           SizedBox(
                             width: 320,
                             child: _buildControls(
+                              playerState: playerState,
                               mainAxisAlignment: MainAxisAlignment.center,
                             ),
                           ),
@@ -175,11 +188,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               return Column(
                 children: [
-                  const _ConnectionHeader(),
+                  _ConnectionHeader(
+                    playerName: playerState.playerName,
+                    connectionLabel: playerState.connectionLabel,
+                  ),
                   const SizedBox(height: 12),
-                  Expanded(child: _buildNowPlayingCard()),
+                  Expanded(child: _buildNowPlayingCard(playerState)),
                   const SizedBox(height: 14),
-                  _buildControls(showModeSelector: false),
+                  _buildControls(
+                    playerState: playerState,
+                    showModeSelector: false,
+                  ),
                 ],
               );
             },
@@ -189,15 +208,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildNowPlayingCard() {
+  Widget _buildNowPlayingCard(PlayerState playerState) {
     return _NowPlayingCard(
-      playback: _playback,
+      playerState: playerState,
       seekPreviewPosition: _wheelIntentResolver.seekPreviewPosition,
       mode: _mode,
     );
   }
 
   Widget _buildControls({
+    required PlayerState playerState,
     MainAxisAlignment mainAxisAlignment = MainAxisAlignment.start,
     bool showModeSelector = true,
   }) {
@@ -215,7 +235,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ClickWheel(
           semanticLabel: '${_mode.label} click wheel',
           semanticHint: _mode.description,
-          isPlaying: _isPlaying,
+          isPlaying: playerState.isPlaying,
           onGesture: _handleWheelGesture,
           onGestureEnded: _handleWheelGestureEnded,
           onGestureCanceled: _handleWheelGestureCanceled,
@@ -227,7 +247,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           onSkipForward: () => _handleWheelGesture(
             WheelGesture(turnDelta: 0.16),
           ),
-          onPlayPausePressed: () => setState(() => _isPlaying = !_isPlaying),
+          onPlayPausePressed: () => _dispatchPlaybackIntent(
+            const TogglePlayPausePlaybackIntent(),
+          ),
         ),
       ],
     );
@@ -236,17 +258,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
 class _NowPlayingCard extends StatelessWidget {
   const _NowPlayingCard({
-    required this.playback,
+    required this.playerState,
     required this.seekPreviewPosition,
     required this.mode,
   });
 
-  final PlaybackSnapshot playback;
+  final PlayerState playerState;
   final Duration? seekPreviewPosition;
   final WheelMode mode;
 
   @override
   Widget build(BuildContext context) {
+    final playback = playerState.playback;
+    final mediaItem = playerState.mediaItem;
     final position = playback.position;
     final trackLength = playback.trackLength;
     final previewPosition = seekPreviewPosition;
@@ -277,12 +301,12 @@ class _NowPlayingCard extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             Text(
-              'Chapter 12: Night Drive',
+              mediaItem.title,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 6),
             Text(
-              'The Long Way Home • Audiobook',
+              mediaItem.subtitle,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 18),
@@ -342,7 +366,11 @@ class _ModeSelector extends StatelessWidget {
 }
 
 class _ConnectionHeader extends StatelessWidget {
-  const _ConnectionHeader();
+  const _ConnectionHeader(
+      {required this.playerName, required this.connectionLabel});
+
+  final String playerName;
+  final String connectionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -352,11 +380,11 @@ class _ConnectionHeader extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Text(
-            'Mass Mate',
+            playerName,
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
-        const _StatusPill(icon: Icons.wifi_tethering, text: 'Local demo'),
+        _StatusPill(icon: Icons.wifi_tethering, text: connectionLabel),
       ],
     );
   }

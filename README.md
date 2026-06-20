@@ -27,4 +27,6 @@ Use `flutter devices` to choose an attached Android device or emulator.
 
 ## Current scope
 
-This repository currently contains the Flutter UI shell and local interaction model only. Music Assistant API integration, authentication, device discovery, and real playback control are intentionally left for follow-up work.
+This repository currently contains the Flutter UI shell, local interaction model, and an adapter seam for future Music Assistant playback wiring. The player UI talks to an intent-level `PlayerAdapter`; the default adapter is still the local demo backend.
+
+Music Assistant API transport, authentication, device discovery, selected-player persistence, websocket state updates, and real playback control are intentionally left for follow-up work. The current Music Assistant classes are stubs that accept canonical playback intents and fail loudly when a real client is not configured.

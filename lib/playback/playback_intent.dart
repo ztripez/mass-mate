@@ -15,6 +15,12 @@ sealed class PlaybackIntent {
   const PlaybackIntent();
 }
 
+/// Requests toggling play/pause for the active playback target.
+final class TogglePlayPausePlaybackIntent extends PlaybackIntent {
+  /// Creates a play/pause toggle request.
+  const TogglePlayPausePlaybackIntent();
+}
+
 /// Requests playback seek to an absolute position in the active item.
 final class SeekToPlaybackIntent extends PlaybackIntent {
   /// Creates an absolute seek request.

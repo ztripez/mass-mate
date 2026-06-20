@@ -38,7 +38,7 @@ final class WheelIntentResolution {
 /// target for [WheelMode.seek], preserves fractional queue movement between calls to
 /// [resolve], and suppresses repeated boundary feedback until the controlled playback
 /// value leaves the boundary. Seek preview commits and cancellation are explicit through
-/// [commitSeekPreview] and [cancelSeekPreview].
+/// [resolveSeekPreviewCommit], [completeSeekPreviewCommit], and [cancelSeekPreview].
 class WheelIntentResolver {
   /// Creates a wheel intent resolver that uses [seekModel] for seek preview movement.
   WheelIntentResolver({SeekModel seekModel = const SeekModel()})
@@ -81,8 +81,9 @@ class WheelIntentResolver {
   /// The [playback] snapshot supplies the committed playback position, track length,
   /// volume, and selectable queue bounds. In [WheelMode.seek], nonzero movement updates
   /// the resolver-owned local preview target and returns a result with
-  /// [WheelIntentResolution.localStateChanged] set; use [commitSeekPreview] to convert the
-  /// active preview into a [SeekToPlaybackIntent] or [cancelSeekPreview] to discard it.
+  /// [WheelIntentResolution.localStateChanged] set; use [resolveSeekPreviewCommit] to create
+  /// a [SeekToPlaybackIntent], [completeSeekPreviewCommit] after the intent is accepted, or
+  /// [cancelSeekPreview] to discard it.
   /// In [WheelMode.volume], movement returns a
   /// [SetVolumePlaybackIntent] clamped to `0.0..1.0`. In [WheelMode.queue], fractional
   /// movement accumulates until at least one whole queue item is available, then returns a
@@ -135,19 +136,23 @@ class WheelIntentResolver {
     }
   }
 
-  /// Commits the active local seek preview as an absolute playback seek intent.
+  /// Creates an absolute playback seek intent for the active local seek preview.
   ///
-  /// Returns [WheelIntentResolution.none] when no seek preview is active. A successful
-  /// commit clears the preview so later wheel input starts from the next committed
-  /// playback position supplied to [resolve].
-  WheelIntentResolution commitSeekPreview() {
+  /// Returns [WheelIntentResolution.none] when no seek preview is active. This method does
+  /// not clear the preview; call [completeSeekPreviewCommit] only after the returned intent
+  /// has been accepted by the playback adapter.
+  WheelIntentResolution resolveSeekPreviewCommit() {
     final previewPosition = _seekPreviewPosition;
     if (previewPosition == null) return const WheelIntentResolution.none();
 
-    _seekPreviewPosition = null;
     return WheelIntentResolution(
       intent: SeekToPlaybackIntent(previewPosition),
     );
+  }
+
+  /// Clears an active seek preview after its commit intent has been accepted.
+  void completeSeekPreviewCommit() {
+    _seekPreviewPosition = null;
   }
 
   /// Cancels any active local seek preview without producing a playback intent.

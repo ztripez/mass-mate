@@ -476,5 +476,5 @@ Future<void> _pumpAppAtSize(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  await tester.pumpWidget(const MassMateApp());
+  await tester.pumpWidget(MassMateApp());
 }
