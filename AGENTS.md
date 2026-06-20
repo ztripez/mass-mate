@@ -8,8 +8,8 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 - Use a Java 17 JDK for Android builds; Java 26 can fail Gradle/AGP `jlink` transforms. On Arch, install `jdk17-openjdk` and run `flutter config --jdk-dir /usr/lib/jvm/java-17-openjdk`.
 - `flutter pub get` -- install dependencies from `pubspec.yaml`.
 - `flutter analyze` -- run the configured `flutter_lints` rules.
-- `flutter test` -- run all widget tests.
-- `flutter test test/widget_test.dart` -- run the current focused test file.
+- `flutter test` -- run the full Flutter test suite, including widget/layout tests and pure click-wheel intent resolution tests.
+- `flutter test test/<file>.dart` -- run a focused test file; use `test/widget_test.dart` for widget/layout/haptics coverage or `test/wheel_intent_resolver_test.dart` for pure click-wheel intent resolution.
 - `flutter devices` -- list Android devices/emulators before choosing a run target.
 - `flutter run -d <android-device-id>` -- start the current Android prototype on a device/emulator.
 - `flutter build apk --debug` -- build a prototype Android APK; release builds fail loudly until release signing is configured.
@@ -18,9 +18,12 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 ## Structure
 - `lib/main.dart` is only the app bootstrap; player UI/state lives in `lib/player_screen.dart`.
 - `lib/click_wheel.dart` owns wheel gesture handling, tick painting, and step haptics.
+- `lib/wheel/wheel_gesture.dart` defines the raw wheel input contract emitted by `ClickWheel`.
+- `lib/playback/` maps wheel gestures and playback snapshots into testable playback intents and boundary feedback.
 - `lib/haptics.dart` owns the native boundary haptics MethodChannel contract.
 - `lib/wheel_mode.dart` defines the shared click-wheel modes and their display/accessibility metadata.
-- `test/widget_test.dart` is the only test file; it pumps `MassMateApp` and covers layout, wheel scrolling, and haptics behavior.
+- `test/widget_test.dart` pumps `MassMateApp` and covers layout, wheel scrolling, and haptics behavior.
+- `test/wheel_intent_resolver_test.dart` covers pure click-wheel intent resolution without pumping widgets.
 - `android/` and `linux/` are the only committed platform runners; do not assume iOS, web, macOS, or Windows scaffolding exists.
 
 ## Repo-specific guidance
@@ -28,4 +31,4 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 - Target Android touch first for validating click-wheel feel; keep Linux as a secondary desktop smoke target.
 - Follow `analysis_options.yaml`: `package:flutter_lints/flutter.yaml` plus `prefer_const_constructors`.
 - `pubspec.lock` is not committed and `*.lock` is ignored; `pubspec.yaml` is the dependency source of truth here.
-- If adding behavior to the click wheel or player shell, add or update widget tests rather than relying only on manual `flutter run` checks.
+- If adding UI behavior to the click wheel or player shell, add or update widget tests; if adding playback intent or wheel gesture resolution, add or update `test/wheel_intent_resolver_test.dart` in addition to any affected widget tests.

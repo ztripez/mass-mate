@@ -1,4 +1,4 @@
-package com.example.mass_mate
+package dev.ztripez.massmate
 
 import android.content.Context
 import android.os.Build

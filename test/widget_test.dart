@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/click_wheel.dart';
 import 'package:mass_mate/main.dart';
@@ -65,6 +66,37 @@ void main() {
     expect(
       _hapticCalls(platformCalls, 'mediumImpact'),
       hasLength(9),
+    );
+  });
+
+  testWidgets('throws when pan update arrives before drag start',
+      (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    final detectors = tester.widgetList<GestureDetector>(
+      find.descendant(
+        of: find.byType(ClickWheel),
+        matching: find.byType(GestureDetector),
+      ),
+    );
+    final detector = detectors.singleWhere(
+      (detector) => detector.onPanUpdate != null,
+    );
+
+    expect(
+      () => detector.onPanUpdate!(
+        DragUpdateDetails(
+          globalPosition: Offset.zero,
+          localPosition: Offset.zero,
+        ),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('drag angle must be initialized'),
+        ),
+      ),
     );
   });
 
