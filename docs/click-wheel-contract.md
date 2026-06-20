@@ -79,6 +79,17 @@ This is a product and interaction contract only. It does not add backend playbac
 - The rotary ring must be easy to acquire with one thumb and must not require precise contact with thin decorative ticks.
 - Button hit areas must not overlap in a way that causes routine ring rotation to trigger button taps.
 
+### Mobile Layout
+
+- On portrait phone layouts, the wheel should size from the available viewport instead of using a fixed pixel square.
+- The wheel should remain the dominant lower control, with its center in the lower thumb-reachable half of common phone viewports.
+- The now-playing card must keep a visible gap above the wheel and must not crowd or overlap the wheel on compact phones.
+- Very tall phones may cap wheel diameter to preserve comfortable reach instead of scaling the wheel indefinitely.
+- Landscape and wide layouts may place the wheel in a side control column as long as the wheel remains large and easy to acquire.
+- Gesture-navigation safe areas must leave clearance below the wheel and must not push the wheel into the card.
+- During active seek preview, the card should reduce secondary metadata density and emphasize the preview target, committed position, and commit/cancel actions.
+- Viewports that cannot fit the minimum supported wheel and safe hit areas must surface an explicit unsupported-viewport message instead of silently overlapping controls.
+
 ## Non-Goals
 
 - No Music Assistant API integration, authentication, device discovery, or output routing is defined here.
