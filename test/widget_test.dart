@@ -142,6 +142,27 @@ void main() {
     expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
   });
 
+  testWidgets('mode cycling clears partial seek wheel accumulation',
+      (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    await _dragWheelClockwiseLessThanSeekStep(tester);
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+    await tester.tap(find.text('MENU'));
+    await tester.pump();
+
+    expect(find.text('Seek mode'), findsAtLeastNWidgets(1));
+
+    await _dragWheelClockwiseLessThanSeekStep(tester);
+    await tester.pump();
+
+    expect(find.text('18:42'), findsOneWidget);
+    expect(find.text('18:43'), findsNothing);
+  });
+
   testWidgets('volume max endpoint emits a double hard buzz', (tester) async {
     await _expectEndpointBuzz(
       tester,
@@ -327,6 +348,13 @@ Future<void> _dragWheelCounterClockwise(WidgetTester tester) async {
   final gesture = await tester.startGesture(center + const Offset(92, 92));
   await gesture.moveTo(center + const Offset(130, 0));
   await gesture.moveTo(center + const Offset(92, -92));
+  await gesture.up();
+}
+
+Future<void> _dragWheelClockwiseLessThanSeekStep(WidgetTester tester) async {
+  final center = tester.getCenter(find.byType(ClickWheel));
+  final gesture = await tester.startGesture(center + const Offset(130, 0));
+  await gesture.moveTo(center + const Offset(129.7, 8.2));
   await gesture.up();
 }
 

@@ -229,6 +229,48 @@ void main() {
       );
       expect(result.intent, isNull);
     });
+
+    test('explicit mode activation clears partial wheel accumulation', () {
+      final resolver = WheelIntentResolver();
+
+      resolver.resolve(
+        gesture: WheelGesture(turnDelta: 0.01),
+        mode: WheelMode.seek,
+        playback: _snapshot(),
+      );
+      resolver.activateMode(WheelMode.volume);
+      resolver.activateMode(WheelMode.queue);
+      resolver.activateMode(WheelMode.seek);
+
+      final result = resolver.resolve(
+        gesture: WheelGesture(turnDelta: 0.01),
+        mode: WheelMode.seek,
+        playback: _snapshot(),
+      );
+      expect(result.intent, isNull);
+    });
+
+    test('explicit mode activation clears partial queue accumulation', () {
+      final resolver = WheelIntentResolver();
+
+      final first = resolver.resolve(
+        gesture: WheelGesture(turnDelta: 0.05),
+        mode: WheelMode.queue,
+        playback: _snapshot(queueIndex: 3),
+      );
+      expect(first.intent, isNull);
+
+      resolver.activateMode(WheelMode.seek);
+      resolver.activateMode(WheelMode.volume);
+      resolver.activateMode(WheelMode.queue);
+
+      final result = resolver.resolve(
+        gesture: WheelGesture(turnDelta: 0.05),
+        mode: WheelMode.queue,
+        playback: _snapshot(queueIndex: 3),
+      );
+      expect(result.intent, isNull);
+    });
   });
 }
 

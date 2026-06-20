@@ -153,6 +153,14 @@ class WheelIntentResolver {
     _lastBoundaryHit = null;
   }
 
+  /// Activates [mode] and clears mode-specific partial wheel accumulation.
+  ///
+  /// Call this when UI state changes modes without a wheel gesture so fractional seek
+  /// seconds, queue items, and remembered boundary feedback from the previous mode cannot
+  /// affect the next gesture resolved for [mode]. Calling this with the currently active
+  /// mode is a no-op.
+  void activateMode(WheelMode mode) => _selectMode(mode);
+
   /// Maps a click-wheel [gesture] into an absolute playback command for [mode].
   ///
   /// The [playback] snapshot supplies the current position, volume, and queue bounds used

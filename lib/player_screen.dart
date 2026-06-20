@@ -81,7 +81,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _setMode(WheelMode mode) {
     if (_mode == mode) return;
 
-    setState(() => _mode = mode);
+    setState(() {
+      _wheelIntentResolver.activateMode(mode);
+      _mode = mode;
+    });
   }
 
   void _cycleMode() {
