@@ -19,11 +19,11 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 - `lib/main.dart` is only the app bootstrap; player UI/state lives in `lib/player_screen.dart`.
 - `lib/click_wheel.dart` owns wheel gesture handling, tick painting, and step haptics.
 - `lib/wheel/wheel_gesture.dart` defines the raw wheel input contract emitted by `ClickWheel`.
-- `lib/playback/` maps wheel gestures and playback snapshots into testable playback intents and boundary feedback.
+- `lib/playback/` defines playback snapshots, seek preview modeling, wheel intent resolution, and boundary feedback.
 - `lib/haptics.dart` owns the native boundary haptics MethodChannel contract.
 - `lib/wheel_mode.dart` defines the shared click-wheel modes and their display/accessibility metadata.
 - `test/widget_test.dart` pumps `MassMateApp` and covers layout, wheel scrolling, and haptics behavior.
-- `test/wheel_intent_resolver_test.dart` covers pure click-wheel intent resolution without pumping widgets.
+- `test/wheel_intent_resolver_test.dart` covers pure click-wheel seek modeling and intent resolution without pumping widgets.
 - `android/` and `linux/` are the only committed platform runners; do not assume iOS, web, macOS, or Windows scaffolding exists.
 
 ## Repo-specific guidance
@@ -31,4 +31,4 @@ Flutter prototype for a Music Assistant companion player, currently focused on a
 - Target Android touch first for validating click-wheel feel; keep Linux as a secondary desktop smoke target.
 - Follow `analysis_options.yaml`: `package:flutter_lints/flutter.yaml` plus `prefer_const_constructors`.
 - `pubspec.lock` is not committed and `*.lock` is ignored; `pubspec.yaml` is the dependency source of truth here.
-- If adding UI behavior to the click wheel or player shell, add or update widget tests; if adding playback intent or wheel gesture resolution, add or update `test/wheel_intent_resolver_test.dart` in addition to any affected widget tests.
+- If adding UI behavior to the click wheel or player shell, add or update widget tests; if adding playback intent, seek modeling, or wheel gesture resolution, add or update `test/wheel_intent_resolver_test.dart` in addition to any affected widget tests.

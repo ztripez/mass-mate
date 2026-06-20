@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'haptics.dart';
+import 'wheel/wheel_constants.dart';
 import 'wheel/wheel_gesture.dart';
-
-const int _wheelStepsPerTurn = 36;
 
 /// Circular touch control that reports rotary drag movement and exposes iPod-style controls.
 ///
@@ -22,6 +21,8 @@ class ClickWheel extends StatefulWidget {
     required this.semanticHint,
     required this.isPlaying,
     required this.onGesture,
+    required this.onGestureEnded,
+    required this.onGestureCanceled,
     required this.onCenterPressed,
     required this.onModePressed,
     required this.onSkipBack,
@@ -41,6 +42,12 @@ class ClickWheel extends StatefulWidget {
 
   /// Called when rotary dragging produces a signed wheel gesture.
   final ValueChanged<WheelGesture> onGesture;
+
+  /// Called when an active rotary drag ends with a normal pointer release.
+  final VoidCallback onGestureEnded;
+
+  /// Called when an active rotary drag is canceled before normal release.
+  final VoidCallback onGestureCanceled;
 
   /// Called when the center select button is pressed.
   final VoidCallback onCenterPressed;
@@ -95,6 +102,13 @@ class _ClickWheelState extends State<ClickWheel> {
   void _end(DragEndDetails details) {
     _center = null;
     _lastAngle = null;
+    widget.onGestureEnded();
+  }
+
+  void _cancel() {
+    _center = null;
+    _lastAngle = null;
+    widget.onGestureCanceled();
   }
 
   double _angleFor(Offset localPosition) {
@@ -116,7 +130,7 @@ class _ClickWheelState extends State<ClickWheel> {
   }
 
   void _pulseHaptics(double deltaTurns) {
-    _hapticAccumulator += deltaTurns * _wheelStepsPerTurn;
+    _hapticAccumulator += deltaTurns * wheelDetentsPerTurn;
 
     while (_hapticAccumulator.abs() >= 1) {
       _mediumImpact();
@@ -174,6 +188,7 @@ class _ClickWheelState extends State<ClickWheel> {
                   onPanStart: _start,
                   onPanUpdate: _update,
                   onPanEnd: _end,
+                  onPanCancel: _cancel,
                 ),
               ),
               Positioned.fill(
@@ -251,13 +266,13 @@ class _WheelTickPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final activeTick =
-        (offsetTurns * _wheelStepsPerTurn).round() % _wheelStepsPerTurn;
+        (offsetTurns * wheelDetentsPerTurn).round() % wheelDetentsPerTurn;
     final outerRadius = size.shortestSide / 2 - 18;
 
-    for (var index = 0; index < _wheelStepsPerTurn; index += 1) {
+    for (var index = 0; index < wheelDetentsPerTurn; index += 1) {
       final distance = _distanceFromActiveTick(index, activeTick);
       final isActive = distance <= 2;
-      final angle = -math.pi / 2 + index * math.pi * 2 / _wheelStepsPerTurn;
+      final angle = -math.pi / 2 + index * math.pi * 2 / wheelDetentsPerTurn;
       final direction = Offset(math.cos(angle), math.sin(angle));
       final tickLength = isActive ? 16.0 - distance * 2 : 8.0;
       final paint = Paint()
@@ -277,7 +292,7 @@ class _WheelTickPainter extends CustomPainter {
 
   int _distanceFromActiveTick(int index, int activeTick) {
     final directDistance = (index - activeTick).abs();
-    return math.min(directDistance, _wheelStepsPerTurn - directDistance);
+    return math.min(directDistance, wheelDetentsPerTurn - directDistance);
   }
 
   @override

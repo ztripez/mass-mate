@@ -1,5 +1,5 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/click_wheel.dart';
 import 'package:mass_mate/main.dart';
@@ -73,15 +73,7 @@ void main() {
       (tester) async {
     await _pumpAppAtSize(tester, const Size(390, 844));
 
-    final detectors = tester.widgetList<GestureDetector>(
-      find.descendant(
-        of: find.byType(ClickWheel),
-        matching: find.byType(GestureDetector),
-      ),
-    );
-    final detector = detectors.singleWhere(
-      (detector) => detector.onPanUpdate != null,
-    );
+    final detector = _wheelPanDetector(tester);
 
     expect(
       () => detector.onPanUpdate!(
@@ -115,7 +107,7 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(find.text('18:42'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'18:4[12]')), findsOneWidget);
     expect(_hapticCalls(platformCalls, 'mediumImpact').length,
         lessThanOrEqualTo(1));
     expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
@@ -136,17 +128,22 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(find.text('18:42'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'18:4[12]')), findsOneWidget);
     expect(_hapticCalls(platformCalls, 'mediumImpact').length,
         lessThanOrEqualTo(1));
     expect(_boundaryBuzzCalls(boundaryBuzzes), isEmpty);
   });
 
-  testWidgets('mode cycling clears partial seek wheel accumulation',
+  testWidgets('mode cycling cancels seek preview without committing',
       (tester) async {
     await _pumpAppAtSize(tester, const Size(390, 844));
 
-    await _dragWheelClockwiseLessThanSeekStep(tester);
+    await tester.tap(find.byIcon(Icons.skip_next));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+
     await tester.tap(find.text('MENU'));
     await tester.pump();
     await tester.tap(find.text('MENU'));
@@ -155,12 +152,98 @@ void main() {
     await tester.pump();
 
     expect(find.text('Seek mode'), findsAtLeastNWidgets(1));
+    expect(find.text('Seek preview'), findsNothing);
+    expect(find.text('18:42'), findsOneWidget);
+  });
 
-    await _dragWheelClockwiseLessThanSeekStep(tester);
+  testWidgets('seek wheel movement previews locally until release commits',
+      (tester) async {
+    final platformCalls = <MethodCall>[];
+    _capturePlatformCalls(platformCalls);
+
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    final center = tester.getCenter(find.byType(ClickWheel));
+    final gesture = await tester.startGesture(center + const Offset(92, -92));
+    await gesture.moveTo(center + const Offset(130, 0));
     await tester.pump();
 
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.text('23:12'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+    expect(_hapticCalls(platformCalls, 'selectionClick'), isEmpty);
+
+    await gesture.up();
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsNothing);
+    expect(find.text('23:12'), findsOneWidget);
+    expect(find.text('18:42'), findsNothing);
+    expect(_hapticCalls(platformCalls, 'selectionClick'), hasLength(1));
+  });
+
+  testWidgets('center button commits active seek preview without cycling modes',
+      (tester) async {
+    final platformCalls = <MethodCall>[];
+    _capturePlatformCalls(platformCalls);
+
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    await tester.tap(find.byIcon(Icons.skip_next));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.text('24:27'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+    expect(_hapticCalls(platformCalls, 'selectionClick'), isEmpty);
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsNothing);
+    expect(find.text('Seek mode'), findsAtLeastNWidgets(1));
+    expect(find.text('24:27'), findsOneWidget);
+    expect(find.text('18:42'), findsNothing);
+    expect(_hapticCalls(platformCalls, 'selectionClick'), hasLength(1));
+  });
+
+  testWidgets('canceling a seek drag cancels preview without committing',
+      (tester) async {
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    await tester.tap(find.byIcon(Icons.skip_next));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+
+    _wheelPanDetector(tester).onPanCancel!();
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsNothing);
     expect(find.text('18:42'), findsOneWidget);
-    expect(find.text('18:43'), findsNothing);
+  });
+
+  testWidgets('play pause does not commit active seek preview', (tester) async {
+    final platformCalls = <MethodCall>[];
+    _capturePlatformCalls(platformCalls);
+
+    await _pumpAppAtSize(tester, const Size(390, 844));
+
+    await tester.tap(find.byIcon(Icons.skip_next));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.text('24:27'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
+
+    expect(find.text('Seek preview'), findsOneWidget);
+    expect(find.text('24:27'), findsOneWidget);
+    expect(find.textContaining('committed 18:42'), findsOneWidget);
+    expect(_hapticCalls(platformCalls, 'selectionClick'), isEmpty);
   });
 
   testWidgets('volume max endpoint emits a double hard buzz', (tester) async {
@@ -278,6 +361,18 @@ Iterable<MethodCall> _boundaryBuzzCalls(List<MethodCall> hapticCalls) {
   return hapticCalls.where((call) => call.method == 'boundaryBuzz');
 }
 
+GestureDetector _wheelPanDetector(WidgetTester tester) {
+  final detectors = tester.widgetList<GestureDetector>(
+    find.descendant(
+      of: find.byType(ClickWheel),
+      matching: find.byType(GestureDetector),
+    ),
+  );
+  return detectors.singleWhere(
+    (detector) => detector.onPanUpdate != null,
+  );
+}
+
 Future<void> _expectEndpointBuzz(
   WidgetTester tester, {
   required Future<void> Function(WidgetTester) drag,
@@ -348,13 +443,6 @@ Future<void> _dragWheelCounterClockwise(WidgetTester tester) async {
   final gesture = await tester.startGesture(center + const Offset(92, 92));
   await gesture.moveTo(center + const Offset(130, 0));
   await gesture.moveTo(center + const Offset(92, -92));
-  await gesture.up();
-}
-
-Future<void> _dragWheelClockwiseLessThanSeekStep(WidgetTester tester) async {
-  final center = tester.getCenter(find.byType(ClickWheel));
-  final gesture = await tester.startGesture(center + const Offset(130, 0));
-  await gesture.moveTo(center + const Offset(129.7, 8.2));
   await gesture.up();
 }
 

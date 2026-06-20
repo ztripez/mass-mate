@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/playback/playback_intent.dart';
+import 'package:mass_mate/playback/playback_snapshot.dart';
+import 'package:mass_mate/playback/seek_model.dart';
 import 'package:mass_mate/playback/wheel_intent_resolver.dart';
+import 'package:mass_mate/wheel/wheel_constants.dart';
 import 'package:mass_mate/wheel/wheel_gesture.dart';
 import 'package:mass_mate/wheel_mode.dart';
 
@@ -72,31 +75,132 @@ void main() {
     });
   });
 
+  group('SeekModel', () {
+    test('keeps short tracks controllable with slow movement', () {
+      const model = SeekModel();
+
+      final result = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
+        playback: _snapshot(
+          position: const Duration(minutes: 1),
+          trackLength: const Duration(minutes: 3),
+        ),
+      );
+
+      expect(result.speedBand, SeekSpeedBand.slow);
+      expect(result.position, const Duration(minutes: 1, seconds: 5));
+      expect(result.boundary, isNull);
+    });
+
+    test('uses faster bands for long-form movement', () {
+      const model = SeekModel();
+
+      final fast = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(4)),
+        playback: _snapshot(
+          position: const Duration(hours: 1),
+          trackLength: const Duration(hours: 10),
+        ),
+      );
+      final veryFast = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(12)),
+        playback: _snapshot(
+          position: const Duration(hours: 1),
+          trackLength: const Duration(hours: 10),
+        ),
+      );
+
+      expect(fast.speedBand, SeekSpeedBand.fast);
+      expect(fast.position, const Duration(hours: 1, minutes: 4));
+      expect(veryFast.speedBand, SeekSpeedBand.veryFast);
+      expect(veryFast.position, const Duration(hours: 2));
+    });
+
+    test('uses normal band for ordinary music-length movement', () {
+      const model = SeekModel();
+
+      final result = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(2)),
+        playback: _snapshot(
+          position: const Duration(minutes: 1),
+          trackLength: const Duration(minutes: 4),
+        ),
+      );
+
+      expect(result.speedBand, SeekSpeedBand.normal);
+      expect(result.position, const Duration(minutes: 1, seconds: 30));
+      expect(result.boundary, isNull);
+    });
+
+    test('clamps audiobook preview at endpoints', () {
+      const model = SeekModel();
+
+      final minimum = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(-12)),
+        playback: _snapshot(
+          position: const Duration(minutes: 10),
+          trackLength: const Duration(hours: 10),
+        ),
+      );
+      final maximum = model.preview(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(12)),
+        playback: _snapshot(
+          position: const Duration(hours: 9, minutes: 30),
+          trackLength: const Duration(hours: 10),
+        ),
+      );
+
+      expect(minimum.position, Duration.zero);
+      expect(minimum.boundary, PlaybackRangeBoundary.minimum);
+      expect(maximum.position, const Duration(hours: 10));
+      expect(maximum.boundary, PlaybackRangeBoundary.maximum);
+    });
+
+    test('rejects invalid current preview state', () {
+      const model = SeekModel();
+
+      expectArgumentErrorNamed(
+        'currentPreview',
+        () => model.preview(
+          gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
+          playback: _snapshot(
+            position: const Duration(minutes: 1),
+            trackLength: const Duration(minutes: 3),
+          ),
+          currentPreview: const Duration(seconds: -1),
+        ),
+      );
+      expectArgumentErrorNamed(
+        'currentPreview',
+        () => model.preview(
+          gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
+          playback: _snapshot(
+            position: const Duration(minutes: 1),
+            trackLength: const Duration(minutes: 3),
+          ),
+          currentPreview: const Duration(minutes: 4),
+        ),
+      );
+    });
+  });
+
   group('WheelIntentResolver', () {
-    test('maps seek movement with fractional accumulation', () {
+    test('maps seek movement to local preview state', () {
       final resolver = WheelIntentResolver();
 
-      final first = resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
-        mode: WheelMode.seek,
-        playback: _snapshot(),
-      );
-      expect(first.intent, isNull);
-
-      final second = resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
+      final result = resolver.resolve(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
         mode: WheelMode.seek,
         playback: _snapshot(),
       );
 
       expect(
-        second.intent,
-        isA<SeekToPlaybackIntent>().having(
-          (intent) => intent.position,
-          'position',
-          const Duration(minutes: 18, seconds: 43),
-        ),
+        result.localStateChanged,
+        isTrue,
       );
+      expect(result.intent, isNull);
+      expect(resolver.seekPreviewPosition,
+          const Duration(minutes: 18, seconds: 47));
     });
 
     test('maps volume movement to an absolute clamped volume intent', () {
@@ -208,33 +312,96 @@ void main() {
       );
     });
 
-    test('mode changes clear partial wheel accumulation', () {
+    test('mode changes cancel active seek preview', () {
       final resolver = WheelIntentResolver();
 
       resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
         mode: WheelMode.seek,
         playback: _snapshot(),
       );
+      expect(resolver.seekPreviewPosition, isNotNull);
+
       resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
+        gesture: WheelGesture(turnDelta: 0.25),
         mode: WheelMode.volume,
         playback: _snapshot(),
       );
 
-      final result = resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
+      expect(resolver.seekPreviewPosition, isNull);
+    });
+
+    test('commits active seek preview only on explicit commit', () {
+      final resolver = WheelIntentResolver();
+
+      final preview = resolver.resolve(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
         mode: WheelMode.seek,
         playback: _snapshot(),
       );
-      expect(result.intent, isNull);
+      expect(preview.localStateChanged, isTrue);
+      expect(preview.intent, isNull);
+
+      final commit = resolver.commitSeekPreview();
+      expect(
+        commit.intent,
+        isA<SeekToPlaybackIntent>().having(
+          (intent) => intent.position,
+          'position',
+          const Duration(minutes: 18, seconds: 47),
+        ),
+      );
+      expect(resolver.seekPreviewPosition, isNull);
+      expect(resolver.commitSeekPreview().intent, isNull);
     });
 
-    test('explicit mode activation clears partial wheel accumulation', () {
+    test('accumulates audiobook preview across updates before commit', () {
+      final resolver = WheelIntentResolver();
+      final playback = _snapshot(
+        position: const Duration(hours: 1),
+        trackLength: const Duration(hours: 10),
+      );
+
+      final first = resolver.resolve(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(12)),
+        mode: WheelMode.seek,
+        playback: playback,
+      );
+      expect(
+        first.localStateChanged,
+        isTrue,
+      );
+      expect(first.intent, isNull);
+      expect(resolver.seekPreviewPosition, const Duration(hours: 2));
+
+      final second = resolver.resolve(
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(12)),
+        mode: WheelMode.seek,
+        playback: playback,
+      );
+      expect(
+        second.localStateChanged,
+        isTrue,
+      );
+      expect(second.intent, isNull);
+      expect(resolver.seekPreviewPosition, const Duration(hours: 3));
+
+      final commit = resolver.commitSeekPreview();
+      expect(
+        commit.intent,
+        isA<SeekToPlaybackIntent>().having(
+          (intent) => intent.position,
+          'position',
+          const Duration(hours: 3),
+        ),
+      );
+    });
+
+    test('explicit mode activation cancels active seek preview', () {
       final resolver = WheelIntentResolver();
 
       resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
+        gesture: WheelGesture(turnDelta: _turnDeltaForDetents(1)),
         mode: WheelMode.seek,
         playback: _snapshot(),
       );
@@ -242,12 +409,7 @@ void main() {
       resolver.activateMode(WheelMode.queue);
       resolver.activateMode(WheelMode.seek);
 
-      final result = resolver.resolve(
-        gesture: WheelGesture(turnDelta: 0.01),
-        mode: WheelMode.seek,
-        playback: _snapshot(),
-      );
-      expect(result.intent, isNull);
+      expect(resolver.seekPreviewPosition, isNull);
     });
 
     test('explicit mode activation clears partial queue accumulation', () {
@@ -304,3 +466,5 @@ void expectArgumentErrorNamed(String expectedName, Object? Function() build) {
     ),
   );
 }
+
+double _turnDeltaForDetents(int detents) => detents / wheelDetentsPerTurn;
