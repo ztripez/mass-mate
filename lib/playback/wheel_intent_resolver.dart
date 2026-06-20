@@ -1,190 +1,126 @@
 import '../wheel/wheel_gesture.dart';
 import '../wheel_mode.dart';
 import 'playback_intent.dart';
+import 'playback_snapshot.dart';
+import 'seek_model.dart';
 
-const double _seekSecondsPerTurn = 75;
 const double _volumePerTurn = 0.18;
 const double _queueItemsPerTurn = 12;
 
-/// Current playback values needed to map relative wheel input to absolute intents.
-final class PlaybackSnapshot {
-  /// Creates a validated snapshot of active playback state and selectable queue bounds.
-  ///
-  /// The [position] value is the committed playback position and must be non-negative.
-  /// The [trackLength] value is the playable duration of the active item and must be
-  /// positive. The [position] value must not be greater than [trackLength]. The [volume]
-  /// value must be finite and between `0.0` for muted output and `1.0` for full output.
-  /// The [queueMinIndex] and [queueMaxIndex] values define a one-based inclusive
-  /// selectable queue range, and [queueIndex] must be within that inclusive range.
-  ///
-  /// Throws an [ArgumentError] when any supplied value violates the playback position,
-  /// track length, volume, or queue range invariants.
-  PlaybackSnapshot({
-    required this.position,
-    required this.trackLength,
-    required this.volume,
-    required this.queueIndex,
-    required this.queueMinIndex,
-    required this.queueMaxIndex,
-  }) {
-    if (position < Duration.zero) {
-      throw ArgumentError.value(position, 'position', 'must be non-negative');
-    }
-    if (trackLength <= Duration.zero) {
-      throw ArgumentError.value(trackLength, 'trackLength', 'must be positive');
-    }
-    if (position > trackLength) {
-      throw ArgumentError.value(
-        position,
-        'position',
-        'must not be greater than trackLength',
-      );
-    }
-    if (!volume.isFinite || volume < 0 || volume > 1) {
-      throw ArgumentError.value(
-        volume,
-        'volume',
-        'must be finite between 0.0 and 1.0',
-      );
-    }
-    if (queueMinIndex < 1) {
-      throw ArgumentError.value(
-        queueMinIndex,
-        'queueMinIndex',
-        'must be at least 1',
-      );
-    }
-    if (queueMinIndex > queueMaxIndex) {
-      throw ArgumentError.value(
-        queueMinIndex,
-        'queueMinIndex',
-        'must not be greater than queueMaxIndex',
-      );
-    }
-    if (queueIndex < queueMinIndex || queueIndex > queueMaxIndex) {
-      throw ArgumentError.value(
-        queueIndex,
-        'queueIndex',
-        'must be within the inclusive queue range',
-      );
-    }
-  }
-
-  /// Current committed playback position.
-  final Duration position;
-
-  /// Playable length of the active item.
-  final Duration trackLength;
-
-  /// Current absolute volume from 0.0 to 1.0.
-  final double volume;
-
-  /// Current one-based queue cursor.
-  final int queueIndex;
-
-  /// Minimum selectable queue index.
-  final int queueMinIndex;
-
-  /// Maximum selectable queue index.
-  final int queueMaxIndex;
-
-  /// Creates a validated copy of the current playback snapshot with selected fields replaced.
-  ///
-  /// Any omitted parameter keeps the corresponding value from the current
-  /// [PlaybackSnapshot]. Supplied [position], [trackLength], [volume], [queueIndex],
-  /// [queueMinIndex], and [queueMaxIndex] values are validated with the same invariants
-  /// as the [PlaybackSnapshot] constructor.
-  ///
-  /// Throws an [ArgumentError] when the combined copied and replaced values violate
-  /// the playback position, track length, volume, or queue range invariants.
-  PlaybackSnapshot copyWith({
-    Duration? position,
-    Duration? trackLength,
-    double? volume,
-    int? queueIndex,
-    int? queueMinIndex,
-    int? queueMaxIndex,
-  }) {
-    return PlaybackSnapshot(
-      position: position ?? this.position,
-      trackLength: trackLength ?? this.trackLength,
-      volume: volume ?? this.volume,
-      queueIndex: queueIndex ?? this.queueIndex,
-      queueMinIndex: queueMinIndex ?? this.queueMinIndex,
-      queueMaxIndex: queueMaxIndex ?? this.queueMaxIndex,
-    );
-  }
-}
-
 /// Result of mapping wheel input to playback behavior and feedback.
 final class WheelIntentResolution {
-  /// Creates a resolver result with an optional playback intent and boundary hit.
-  const WheelIntentResolution({this.intent, this.boundaryHit});
+  /// Creates a resolver result with optional playback intent, local update, and boundary hit.
+  const WheelIntentResolution({
+    this.intent,
+    this.boundaryHit,
+    this.localStateChanged = false,
+  });
 
-  /// Creates a resolver result for wheel input that has not crossed a behavior step.
+  /// Creates a resolver result that contains neither a playback intent nor boundary feedback.
   const WheelIntentResolution.none()
       : intent = null,
-        boundaryHit = null;
+        boundaryHit = null,
+        localStateChanged = false;
 
   /// Playback command produced by the wheel, if any.
   final PlaybackIntent? intent;
 
   /// Range boundary that newly needs feedback, if any.
   final PlaybackBoundaryHit? boundaryHit;
+
+  /// Whether resolver-owned local state changed without producing a playback command.
+  final bool localStateChanged;
 }
 
 /// Stateful mapper that converts click-wheel movement into playback intents and boundary feedback.
 ///
-/// The resolver tracks the active [WheelMode], preserves fractional seek and queue movement
-/// between calls to [resolve], and suppresses repeated boundary feedback until the
-/// controlled playback value leaves the boundary.
+/// The resolver tracks the active [WheelMode], maintains an uncommitted seek preview
+/// target for [WheelMode.seek], preserves fractional queue movement between calls to
+/// [resolve], and suppresses repeated boundary feedback until the controlled playback
+/// value leaves the boundary. Seek preview commits and cancellation are explicit through
+/// [commitSeekPreview] and [cancelSeekPreview].
 class WheelIntentResolver {
+  /// Creates a wheel intent resolver that uses [seekModel] for seek preview movement.
+  WheelIntentResolver({SeekModel seekModel = const SeekModel()})
+      : _seekModel = seekModel;
+
+  final SeekModel _seekModel;
   WheelMode? _activeMode;
-  double _seekRemainderSeconds = 0;
   double _queueRemainderItems = 0;
+  Duration? _seekPreviewPosition;
   PlaybackBoundaryHit? _lastBoundaryHit;
 
-  void _selectMode(WheelMode mode) {
-    if (_activeMode == mode) return;
+  /// Current local seek preview target, if seek preview is active.
+  Duration? get seekPreviewPosition => _seekPreviewPosition;
 
+  /// Whether a local seek preview is active and waiting for commit or cancellation.
+  bool get hasActiveSeekPreview => _seekPreviewPosition != null;
+
+  bool _selectMode(WheelMode mode) {
+    if (_activeMode == mode) return false;
+
+    final clearedSeekPreview =
+        mode != WheelMode.seek && _seekPreviewPosition != null;
     _activeMode = mode;
-    _seekRemainderSeconds = 0;
     _queueRemainderItems = 0;
+    if (mode != WheelMode.seek) _seekPreviewPosition = null;
     _lastBoundaryHit = null;
+    return clearedSeekPreview;
   }
 
-  /// Activates [mode] and clears mode-specific partial wheel accumulation.
+  /// Activates [mode] and clears state that must not carry across wheel modes.
   ///
-  /// Call this when UI state changes modes without a wheel gesture so fractional seek
-  /// seconds, queue items, and remembered boundary feedback from the previous mode cannot
-  /// affect the next gesture resolved for [mode]. Calling this with the currently active
-  /// mode is a no-op.
+  /// Call this when UI state changes modes without a wheel gesture. Activating a new
+  /// non-seek mode clears any active seek preview, fractional queue movement, and remembered
+  /// boundary feedback from the previous mode. Calling this with the currently active mode
+  /// is a no-op.
   void activateMode(WheelMode mode) => _selectMode(mode);
 
-  /// Maps a click-wheel [gesture] into an absolute playback command for [mode].
+  /// Maps a click-wheel [gesture] into playback behavior for [mode].
   ///
-  /// The [playback] snapshot supplies the current position, volume, and queue bounds used
-  /// to clamp the resolved command. Seek and queue modes accumulate fractional wheel
-  /// movement until at least one whole second or queue item is available. Returns
-  /// [WheelIntentResolution.none] when [gesture] has no movement or the accumulated
-  /// movement has not crossed a behavior step. The returned [WheelIntentResolution] may
-  /// include a [PlaybackBoundaryHit] when the mapped value newly reaches a range boundary.
+  /// The [playback] snapshot supplies the committed playback position, track length,
+  /// volume, and selectable queue bounds. In [WheelMode.seek], nonzero movement updates
+  /// the resolver-owned local preview target and returns a result with
+  /// [WheelIntentResolution.localStateChanged] set; use [commitSeekPreview] to convert the
+  /// active preview into a [SeekToPlaybackIntent] or [cancelSeekPreview] to discard it.
+  /// In [WheelMode.volume], movement returns a
+  /// [SetVolumePlaybackIntent] clamped to `0.0..1.0`. In [WheelMode.queue], fractional
+  /// movement accumulates until at least one whole queue item is available, then returns a
+  /// [SelectQueueItemPlaybackIntent] clamped to the selectable queue range.
+  ///
+  /// Returns a local-state result when a mode change cancels an active seek preview without
+  /// producing a playback intent. Otherwise returns [WheelIntentResolution.none] when
+  /// [gesture] has no movement or queue movement has not crossed a whole-item step. The
+  /// returned [WheelIntentResolution] may include a [PlaybackBoundaryHit] when the mapped
+  /// value newly reaches a range boundary.
   WheelIntentResolution resolve({
     required WheelGesture gesture,
     required WheelMode mode,
     required PlaybackSnapshot playback,
   }) {
-    if (_activeMode != mode) _selectMode(mode);
-    if (gesture.turnDelta == 0) return const WheelIntentResolution.none();
-
-    switch (mode) {
-      case WheelMode.seek:
-        return _resolveSeek(gesture, playback);
-      case WheelMode.volume:
-        return _resolveVolume(gesture, playback);
-      case WheelMode.queue:
-        return _resolveQueue(gesture, playback);
+    final modeChangeCanceledPreview = _selectMode(mode);
+    if (gesture.turnDelta == 0) {
+      return modeChangeCanceledPreview
+          ? const WheelIntentResolution(localStateChanged: true)
+          : const WheelIntentResolution.none();
     }
+
+    final resolution = switch (mode) {
+      WheelMode.seek => _resolveSeek(gesture, playback),
+      WheelMode.volume => _resolveVolume(gesture, playback),
+      WheelMode.queue => _resolveQueue(gesture, playback),
+    };
+
+    if (modeChangeCanceledPreview &&
+        resolution.intent == null &&
+        !resolution.localStateChanged) {
+      return WheelIntentResolution(
+        boundaryHit: resolution.boundaryHit,
+        localStateChanged: true,
+      );
+    }
+
+    return resolution;
   }
 
   /// Clears the remembered [boundaryHit] so the same playback boundary can emit feedback again.
@@ -199,28 +135,44 @@ class WheelIntentResolver {
     }
   }
 
+  /// Commits the active local seek preview as an absolute playback seek intent.
+  ///
+  /// Returns [WheelIntentResolution.none] when no seek preview is active. A successful
+  /// commit clears the preview so later wheel input starts from the next committed
+  /// playback position supplied to [resolve].
+  WheelIntentResolution commitSeekPreview() {
+    final previewPosition = _seekPreviewPosition;
+    if (previewPosition == null) return const WheelIntentResolution.none();
+
+    _seekPreviewPosition = null;
+    return WheelIntentResolution(
+      intent: SeekToPlaybackIntent(previewPosition),
+    );
+  }
+
+  /// Cancels any active local seek preview without producing a playback intent.
+  ///
+  /// Canceling also clears remembered boundary feedback so a discarded seek preview cannot
+  /// suppress haptics for the next seek gesture.
+  void cancelSeekPreview() {
+    _seekPreviewPosition = null;
+    _lastBoundaryHit = null;
+  }
+
   WheelIntentResolution _resolveSeek(
     WheelGesture gesture,
     PlaybackSnapshot playback,
   ) {
-    _seekRemainderSeconds += gesture.turnDelta * _seekSecondsPerTurn;
-    final deltaSeconds = _consumeWholeUnits(_seekRemainderSeconds);
-    _seekRemainderSeconds -= deltaSeconds;
-
-    if (deltaSeconds == 0) return const WheelIntentResolution.none();
-
-    final nextSeconds = playback.position.inSeconds + deltaSeconds;
-    final clampedSeconds =
-        nextSeconds.clamp(0, playback.trackLength.inSeconds).toInt();
-    final boundary = _boundaryForRange(
-      clampedSeconds,
-      0,
-      playback.trackLength.inSeconds,
+    final preview = _seekModel.preview(
+      gesture: gesture,
+      playback: playback,
+      currentPreview: _seekPreviewPosition,
     );
+    _seekPreviewPosition = preview.position;
 
     return WheelIntentResolution(
-      intent: SeekToPlaybackIntent(Duration(seconds: clampedSeconds)),
-      boundaryHit: _feedbackForBoundary(WheelMode.seek, boundary),
+      localStateChanged: true,
+      boundaryHit: _feedbackForBoundary(WheelMode.seek, preview.boundary),
     );
   }
 

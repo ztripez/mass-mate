@@ -22,19 +22,19 @@ This is a product and interaction contract only. It does not add backend playbac
 
 | Mode | Wheel rotation | Center button | Left/right | MENU |
 | --- | --- | --- | --- | --- |
-| Seek | Move preview seek target | Commit active preview; if no preview is active, toggle seek precision | Move preview to previous/next chapter when chapter data exists; otherwise move preview by -30s/+30s | Cycle mode |
-| Volume | Fine volume adjustment | Mute/unmute | Previous/next track | Cycle mode |
-| Queue | Move queue cursor | Play selected item | Page queue backward/forward | Cycle mode |
+| Seek | Move preview seek target | Commit active preview; if no preview is active, cycle mode in the current prototype | Apply the same adaptive preview movement as wheel input in the current prototype | Cycle mode |
+| Volume | Fine volume adjustment | Cycle mode in the current prototype; future integration may use this for mute/unmute | Apply the same small volume movement as wheel input in the current prototype | Cycle mode |
+| Queue | Move queue cursor | Cycle mode in the current prototype; future integration may use this for playing the selected item | Apply the same small queue movement as wheel input in the current prototype | Cycle mode |
 
 ### Seek Preview And Commit
 
 - Seek mode is preview-first. Wheel rotation changes a preview target, not the committed playback position.
 - The preview target starts from the current committed playback position when the first seek input begins.
 - Long-form seeking is first-class: users can keep rotating for large time jumps while the preview target remains visible and separate from the committed position.
-- Center press always commits the active preview target and applies the seek.
-- Additional commit triggers, such as wheel release or a short idle timeout, are part of the adaptive seek work and must be made explicit before implementation.
-- If center is pressed with no active preview, it toggles seek precision between coarse and fine seek adjustment.
-- Left/right seek actions update the preview target and follow the active seek commit policy.
+- Wheel release commits the active preview target and applies the seek.
+- Center press commits the active preview target and applies the seek.
+- If center is pressed with no active preview in the current prototype, it cycles to the next wheel mode.
+- Left/right seek actions update the preview target with the same adaptive model as wheel input and follow the active seek commit policy in the current prototype.
 - MENU or direct mode selection cancels any active seek preview without committing it.
 - Play/pause and track transport actions must not silently commit a seek preview.
 - Preview targets clamp to the current playable range.
@@ -67,7 +67,7 @@ This is a product and interaction contract only. It does not add backend playbac
 - The wheel exposes a mode-specific label, such as `Seek click wheel`, `Volume click wheel`, or `Queue click wheel`.
 - The wheel hint explains what rotation changes in the active mode.
 - MENU is labeled as changing the wheel mode.
-- Center uses mode-specific labels and hints: commit/toggle precision in Seek, mute/unmute in Volume, and play selected item in Queue.
+- Center uses mode-specific labels and hints: commit active preview or cycle mode with no preview in Seek, and cycle mode in the current Volume and Queue prototype modes.
 - Left/right labels and hints change with the active mode.
 - Bottom play/pause label reflects the current committed playback state.
 - Seek preview state must be announced or otherwise exposed separately from committed playback position.
@@ -88,8 +88,9 @@ This is a product and interaction contract only. It does not add backend playbac
 
 ## Open Tuning Decisions
 
-- Exact seek speed per wheel turn and the coarse/fine seek increments.
-- Seek commit policy: center-only versus release/idle/center, preview expiry behavior, and timeout duration.
+- Exact seek speed band thresholds and per-detent increments after Android device testing.
+- Seek idle commit policy, preview expiry behavior, and timeout duration.
+- Whether adaptive seek speed bands need an additional explicit precision toggle, and which control invokes it.
 - Exact volume step size per detent and whether acceleration is needed for long rotations.
 - Queue page size and whether it maps to visible rows or a fixed item count.
 - Exact haptic waveform strength and platform-specific fallbacks.

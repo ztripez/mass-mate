@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'click_wheel.dart';
 import 'haptics.dart';
+import 'playback/playback_duration_format.dart';
 import 'playback/playback_intent.dart';
+import 'playback/playback_snapshot.dart';
 import 'playback/wheel_intent_resolver.dart';
 import 'wheel/wheel_gesture.dart';
 import 'wheel_mode.dart';
@@ -22,7 +25,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   WheelMode _mode = WheelMode.seek;
   PlaybackSnapshot _playback = PlaybackSnapshot(
     position: const Duration(minutes: 18, seconds: 42),
-    trackLength: const Duration(minutes: 54, seconds: 18),
+    trackLength: const Duration(hours: 1, minutes: 24, seconds: 18),
     volume: 0.62,
     queueIndex: 3,
     queueMinIndex: 1,
@@ -41,9 +44,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _emitBoundaryFeedback(resolution.boundaryHit);
 
     final intent = resolution.intent;
-    if (intent == null) return;
+    if (intent == null) {
+      if (resolution.localStateChanged) setState(() {});
+      return;
+    }
 
     setState(() => _applyPlaybackIntent(intent));
+  }
+
+  void _pulseSeekCommitHaptics() {
+    unawaited(
+      HapticFeedback.selectionClick()
+          .catchError((Object error, StackTrace stackTrace) {
+        WheelHaptics.reportFailure(
+          context: 'while emitting a seek preview commit haptic',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }),
+    );
   }
 
   void _applyPlaybackIntent(PlaybackIntent intent) {
@@ -54,6 +73,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _playback = _playback.copyWith(volume: volume);
       case SelectQueueItemPlaybackIntent(:final queueIndex):
         _playback = _playback.copyWith(queueIndex: queueIndex);
+    }
+  }
+
+  void _commitSeekPreview() {
+    final resolution = _wheelIntentResolver.commitSeekPreview();
+    final intent = resolution.intent;
+    if (intent == null) return;
+
+    _pulseSeekCommitHaptics();
+    setState(() => _applyPlaybackIntent(intent));
+  }
+
+  void _handleWheelGestureEnded() {
+    if (_mode == WheelMode.seek) _commitSeekPreview();
+  }
+
+  void _handleWheelGestureCanceled() {
+    if (_mode == WheelMode.seek) {
+      setState(_wheelIntentResolver.cancelSeekPreview);
     }
   }
 
@@ -82,9 +120,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_mode == mode) return;
 
     setState(() {
+      if (_mode == WheelMode.seek) _wheelIntentResolver.cancelSeekPreview();
       _wheelIntentResolver.activateMode(mode);
       _mode = mode;
     });
+  }
+
+  void _handleCenterPressed() {
+    if (_mode == WheelMode.seek && _wheelIntentResolver.hasActiveSeekPreview) {
+      _commitSeekPreview();
+      return;
+    }
+
+    _cycleMode();
   }
 
   void _cycleMode() {
@@ -144,6 +192,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget _buildNowPlayingCard() {
     return _NowPlayingCard(
       playback: _playback,
+      seekPreviewPosition: _wheelIntentResolver.seekPreviewPosition,
       mode: _mode,
     );
   }
@@ -168,7 +217,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           semanticHint: _mode.description,
           isPlaying: _isPlaying,
           onGesture: _handleWheelGesture,
-          onCenterPressed: _cycleMode,
+          onGestureEnded: _handleWheelGestureEnded,
+          onGestureCanceled: _handleWheelGestureCanceled,
+          onCenterPressed: _handleCenterPressed,
           onModePressed: _cycleMode,
           onSkipBack: () => _handleWheelGesture(
             WheelGesture(turnDelta: -0.16),
@@ -186,17 +237,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
 class _NowPlayingCard extends StatelessWidget {
   const _NowPlayingCard({
     required this.playback,
+    required this.seekPreviewPosition,
     required this.mode,
   });
 
   final PlaybackSnapshot playback;
+  final Duration? seekPreviewPosition;
   final WheelMode mode;
 
   @override
   Widget build(BuildContext context) {
     final position = playback.position;
     final trackLength = playback.trackLength;
-    final progress = position.inMilliseconds / trackLength.inMilliseconds;
+    final previewPosition = seekPreviewPosition;
+    final displayPosition = previewPosition ?? position;
+    final progress =
+        displayPosition.inMilliseconds / trackLength.inMilliseconds;
+    final isPreviewingSeek = previewPosition != null;
 
     return Card(
       child: Padding(
@@ -234,13 +291,23 @@ class _NowPlayingCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_formatDuration(position)),
-                Text('-${_formatDuration(trackLength - position)}'),
+                Text(formatPlaybackDuration(displayPosition)),
+                Text(
+                    '-${formatPlaybackDuration(trackLength - displayPosition)}'),
               ],
             ),
             const SizedBox(height: 16),
-            _StatusPill(icon: mode.icon, text: '${mode.label} mode'),
+            _StatusPill(
+              icon: isPreviewingSeek ? Icons.travel_explore : mode.icon,
+              text: isPreviewingSeek ? 'Seek preview' : '${mode.label} mode',
+            ),
             const SizedBox(height: 10),
+            if (isPreviewingSeek) ...[
+              Text(
+                'Preview target ${formatPlaybackDuration(displayPosition)} • committed ${formatPlaybackDuration(position)}',
+              ),
+              const SizedBox(height: 10),
+            ],
             Text(
               'Volume ${(playback.volume * 100).round()}% • Queue item ${playback.queueIndex} of ${playback.queueMaxIndex}',
             ),
@@ -321,10 +388,4 @@ class _StatusPill extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatDuration(Duration duration) {
-  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-  return '$minutes:$seconds';
 }
