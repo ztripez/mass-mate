@@ -3,27 +3,32 @@ package dev.ztripez.massmate
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
+import android.os.Looper
 
 /**
  * Route-independent Android owner for the Mass Mate native local-player backend.
  *
  * The service is bound by [LocalPlayerChannel] and outlives Flutter route rebuilds. It owns the
- * future native player lifecycle boundary, while Flutter widgets continue to send only intent-level
- * playback operations through the Dart adapter seam. This skeleton intentionally does not open any
- * network transport, parse any player protocol, or start any audio output.
- *
- * Public methods return platform-channel result envelopes shaped as
- * `{ accepted: Boolean, error?: { code: String, message: String, details?: Any } }`. Snapshot
- * listeners receive maps shaped as `{ connectionStatus, playerName, connectionLabel, mediaTitle,
- * mediaSubtitle, positionMs, trackLengthMs, volume, queueIndex, queueMinIndex, queueMaxIndex,
- * isPlaying, error? }`. Failed or unavailable snapshots include an error payload so Dart can fail
- * visibly and never fall back to the demo backend silently.
+ * Sendspin connection lifecycle boundary while Flutter widgets continue to send only intent-level
+ * playback operations through the Dart adapter seam. Transport open, hello/goodbye, deterministic
+ * reconnect, and connection-state aggregation run on a dedicated serial background thread so
+ * MethodChannel calls never block Android's main thread on transport locks or callbacks. The
+ * service intentionally does not implement audio output, stream lifecycle, clock sync, browse, or a
+ * controller command dispatcher.
  */
 class LocalPlayerService : Service() {
     private val binder = LocalBinder()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val controllerThread = HandlerThread("MassMateSendspinConnection")
+
+    private lateinit var controllerHandler: Handler
+    private lateinit var controller: SendspinConnectionController
+
     private var snapshotListener: ((Map<String, Any?>) -> Unit)? = null
-    private var state = LocalPlayerServiceState.DISCONNECTED
+    private var currentSnapshot = SendspinConnectionSnapshot.disconnected()
 
     /** Binder exposing the service instance to the platform-channel registrar. */
     inner class LocalBinder : Binder() {
@@ -32,55 +37,76 @@ class LocalPlayerService : Service() {
             get() = this@LocalPlayerService
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        controllerThread.start()
+        controllerHandler = Handler(controllerThread.looper)
+        controller = SendspinConnectionController(
+            transportFactory = OkHttpWebSocketSendspinTransportFactory(),
+            onSnapshot = ::handleControllerSnapshot,
+            queue = SendspinConnectionQueue { task -> controllerHandler.post(task) },
+        )
+    }
+
     override fun onBind(intent: Intent?): IBinder = binder
 
     /**
      * Registers a listener for typed local-player snapshot envelopes.
      *
-     * The listener immediately receives the current snapshot map and then receives subsequent
-     * snapshots caused by [connect], [disconnect], or [sendCommand]. Passing `null` clears the
-     * listener. Failed and unavailable snapshots include an `error` payload using
-     * [LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE] or
-     * [LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED].
+     * The listener immediately receives the current snapshot map and then receives later snapshots
+     * caused by [connect], [disconnect], or [sendCommand]. Passing `null` clears the listener.
+     * Failed snapshots include the typed error emitted by the native connection controller.
      */
     fun setSnapshotListener(listener: ((Map<String, Any?>) -> Unit)?) {
         snapshotListener = listener
-        listener?.invoke(currentSnapshot())
+        listener?.invoke(currentSnapshotEnvelope())
     }
 
     /**
-     * Requests a local-player connection and reports explicit unavailability for this skeleton.
+     * Asynchronously requests a local-player connection to configured Sendspin server settings.
      *
-     * Returns `{ accepted: false, error: { code: LOCAL_PLAYER_UNAVAILABLE, message } }` and emits
-     * an unavailable snapshot. No transport, network, protocol, or audio work starts in this issue.
+     * [arguments] must contain `serverUrl` and may contain `sendspinPath`; invalid or missing
+     * values complete with `{ accepted: false, error: { code: LOCAL_PLAYER_ENDPOINT_INVALID, ... } }`
+     * and emit a failed snapshot. Valid settings enqueue transport open and hello handling on the
+     * service's serial connection thread, then complete with `{ accepted: true }` once the WebSocket
+     * open request is started. Later handshake success/failure is reported through snapshots.
      */
-    fun connect(): Map<String, Any?> {
-        state = LocalPlayerServiceState.UNAVAILABLE
-        emitSnapshot()
-        return LocalPlayerEnvelope.failedResult(
-            LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
-            LocalPlayerEnvelope.TRANSPORT_UNIMPLEMENTED_MESSAGE,
-        )
+    fun connect(arguments: Map<*, *>?, complete: (Map<String, Any?>) -> Unit) {
+        val endpoint = try {
+            SendspinEndpointBuilder.fromBridgeArguments(arguments)
+        } catch (error: SendspinConnectionException) {
+            applyLocalFailure(error)
+            complete(LocalPlayerEnvelope.failedResult(error.code, error.message, error.details))
+            return
+        }
+
+        controller.connect(endpoint) { error ->
+            completeOnMain(complete, error.toLifecycleResult())
+        }
     }
 
     /**
-     * Requests an explicit local-player disconnect without destroying route-independent ownership.
+     * Asynchronously requests an explicit local-player disconnect.
      *
-     * Returns `{ accepted: true }` and emits a disconnected snapshot. Route unmounts do not call
-     * this method; only explicit adapter lifecycle requests should disconnect the local player.
+     * The controller sends `client/goodbye` when a client hello has already been sent, closes the
+     * transport with normal WebSocket closure, emits a disconnected snapshot on success, and
+     * completes with `{ accepted: true }`. Goodbye or close failures complete with
+     * `{ accepted: false, error: { code: LOCAL_PLAYER_TRANSPORT_ERROR, ... } }` and emit a failed
+     * snapshot. Flutter route unmounts do not call this method.
      */
-    fun disconnect(): Map<String, Any?> {
-        state = LocalPlayerServiceState.DISCONNECTED
-        emitSnapshot()
-        return LocalPlayerEnvelope.acceptedResult()
+    fun disconnect(complete: (Map<String, Any?>) -> Unit) {
+        controller.disconnect { error ->
+            completeOnMain(complete, error.toLifecycleResult())
+        }
     }
 
     /**
      * Sends an intent-level Mass Mate playback command envelope to the native backend seam.
      *
-     * [envelope] must contain a string `command` field naming a Mass Mate operation. Invalid
-     * envelopes return `LOCAL_PLAYER_INVALID_ENVELOPE`. Valid commands return
-     * `LOCAL_PLAYER_NOT_CONNECTED` in this skeleton and emit a failed not-connected snapshot.
+     * Invalid envelopes return `LOCAL_PLAYER_INVALID_ENVELOPE`. Valid commands require
+     * [SendspinConnectionStatus.READY]; otherwise the service emits and returns
+     * `LOCAL_PLAYER_NOT_CONNECTED`. Because command dispatch is outside this handshake slice,
+     * ready-state commands return `LOCAL_PLAYER_REJECTED` instead of pretending success.
      */
     fun sendCommand(envelope: Map<*, *>?): Map<String, Any?> {
         if (envelope?.get("command") !is String) {
@@ -90,65 +116,78 @@ class LocalPlayerService : Service() {
             )
         }
 
-        state = LocalPlayerServiceState.FAILED_NOT_CONNECTED
-        emitSnapshot()
-        return LocalPlayerEnvelope.failedResult(
-            LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
-            LocalPlayerEnvelope.NOT_CONNECTED_MESSAGE,
-        )
-    }
-
-    private fun emitSnapshot() {
-        snapshotListener?.invoke(currentSnapshot())
-    }
-
-    private fun currentSnapshot(): Map<String, Any?> {
-        return LocalPlayerEnvelope.snapshot(
-            connectionStatus = state.connectionStatus,
-            connectionLabel = state.connectionLabel,
-            mediaTitle = state.mediaTitle,
-            mediaSubtitle = state.mediaSubtitle,
-            error = state.errorEnvelope(),
-        )
-    }
-}
-
-private enum class LocalPlayerServiceState(
-    val connectionStatus: String,
-    val connectionLabel: String,
-    val mediaTitle: String,
-    val mediaSubtitle: String,
-) {
-    DISCONNECTED(
-        "disconnected",
-        "Native local player disconnected",
-        "Local player ready",
-        "Not connected",
-    ),
-    UNAVAILABLE(
-        "unavailable",
-        "Native local player unavailable",
-        "Local player unavailable",
-        "Transport will be added by a later issue",
-    ),
-    FAILED_NOT_CONNECTED(
-        "failed",
-        "Native local player not connected",
-        "Local player not connected",
-        "Connect before sending playback commands",
-    );
-
-    fun errorEnvelope(): Map<String, Any?>? {
-        return when (this) {
-            DISCONNECTED -> null
-            UNAVAILABLE -> LocalPlayerEnvelope.errorEnvelope(
-                LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
-                LocalPlayerEnvelope.TRANSPORT_UNIMPLEMENTED_MESSAGE,
-            )
-            FAILED_NOT_CONNECTED -> LocalPlayerEnvelope.errorEnvelope(
+        if (currentSnapshot.status != SendspinConnectionStatus.READY) {
+            val error = SendspinConnectionException(
                 LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
                 LocalPlayerEnvelope.NOT_CONNECTED_MESSAGE,
             )
+            applyLocalFailure(error)
+            return LocalPlayerEnvelope.failedResult(error.code, error.message, error.details)
         }
+
+        return LocalPlayerEnvelope.failedResult(
+            LocalPlayerEnvelope.LOCAL_PLAYER_REJECTED,
+            LocalPlayerEnvelope.COMMAND_DISPATCH_DEFERRED_MESSAGE,
+        )
     }
+
+    override fun onDestroy() {
+        if (::controller.isInitialized) {
+            controller.disconnect()
+        }
+        controllerThread.quitSafely()
+        super.onDestroy()
+    }
+
+    private fun handleControllerSnapshot(snapshot: SendspinConnectionSnapshot) {
+        mainHandler.post { applyControllerSnapshot(snapshot) }
+    }
+
+    private fun applyControllerSnapshot(snapshot: SendspinConnectionSnapshot) {
+        if (!LocalPlayerSnapshotOrdering.shouldApplyControllerSnapshot(currentSnapshot, snapshot)) return
+        currentSnapshot = snapshot
+        emitSnapshot()
+    }
+
+    private fun applyLocalFailure(error: SendspinConnectionException) {
+        currentSnapshot = LocalPlayerSnapshotOrdering.localFailure(currentSnapshot, error)
+        emitSnapshot()
+    }
+
+    private fun emitSnapshot() {
+        snapshotListener?.invoke(currentSnapshotEnvelope())
+    }
+
+    private fun currentSnapshotEnvelope(): Map<String, Any?> = LocalPlayerEnvelope.snapshot(currentSnapshot)
+
+    private fun completeOnMain(
+        complete: (Map<String, Any?>) -> Unit,
+        result: Map<String, Any?>,
+    ) {
+        mainHandler.post { complete(result) }
+    }
+
+    private fun SendspinConnectionException?.toLifecycleResult(): Map<String, Any?> {
+        val error = this ?: return LocalPlayerEnvelope.acceptedResult()
+        return LocalPlayerEnvelope.failedResult(error.code, error.message, error.details)
+    }
+}
+
+/** Keeps service-local failures from advancing controller-owned snapshot generations. */
+object LocalPlayerSnapshotOrdering {
+    /** Returns whether controller-produced [incoming] may replace [current].
+     *
+     * Equal generations are accepted so controller snapshots can replace service-local failures that
+     * preserved the current generation instead of consuming a future controller generation.
+     */
+    fun shouldApplyControllerSnapshot(
+        current: SendspinConnectionSnapshot,
+        incoming: SendspinConnectionSnapshot,
+    ): Boolean = incoming.generation >= current.generation
+
+    /** Creates a visible local failure without consuming a future controller generation. */
+    fun localFailure(
+        current: SendspinConnectionSnapshot,
+        error: SendspinConnectionException,
+    ): SendspinConnectionSnapshot = SendspinConnectionSnapshot.failed(current.generation, error)
 }

@@ -16,6 +16,11 @@ abstract interface class NativeLocalPlayerBridge {
   Stream<LocalPlayerSnapshot> get snapshots;
 
   /// Requests native local-player connection.
+  ///
+  /// Implementations must pass explicit Sendspin configuration to Android and
+  /// surface endpoint, transport, protocol, and role errors through
+  /// [LocalPlayerBridgeResult] or [snapshots]; they must not switch to demo
+  /// state after a native failure.
   Future<LocalPlayerBridgeResult> connect();
 
   /// Requests native local-player disconnection.
@@ -33,21 +38,32 @@ abstract interface class NativeLocalPlayerBridge {
 /// received from `mass_mate/local_player/snapshots`. Platform exceptions and malformed
 /// result or snapshot envelopes become typed bridge failures. The bridge sends only
 /// Mass Mate intent-level [LocalPlayerCommandEnvelope] values and does not implement or
-/// expose native transport, protocol, network, or audio behavior.
+/// expose native transport, protocol, network, or audio behavior. Connect calls include
+/// [LocalPlayerConnectionSettings] from `MASS_MATE_SENDSPIN_SERVER_URL` and optional
+/// `MASS_MATE_SENDSPIN_PATH`; Android validates accepted schemes and the `/`-prefixed
+/// path and reports visible typed failures for invalid configuration.
 final class MethodChannelNativeLocalPlayerBridge
     implements NativeLocalPlayerBridge {
   /// Creates the platform-channel bridge.
+  ///
+  /// [connectionSettings] is injectable for tests. When omitted, settings are read from
+  /// `MASS_MATE_SENDSPIN_SERVER_URL` and `MASS_MATE_SENDSPIN_PATH` via
+  /// [LocalPlayerConnectionSettings.fromEnvironment].
   MethodChannelNativeLocalPlayerBridge({
     MethodChannel methodChannel = const MethodChannel(_methodChannelName),
     EventChannel eventChannel = const EventChannel(_eventChannelName),
+    LocalPlayerConnectionSettings? connectionSettings,
   })  : _methodChannel = methodChannel,
-        _eventChannel = eventChannel;
+        _eventChannel = eventChannel,
+        _connectionSettings = connectionSettings ??
+            LocalPlayerConnectionSettings.fromEnvironment();
 
   static const String _methodChannelName = 'mass_mate/local_player';
   static const String _eventChannelName = 'mass_mate/local_player/snapshots';
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
+  final LocalPlayerConnectionSettings _connectionSettings;
 
   Stream<LocalPlayerSnapshot>? _snapshots;
 
@@ -101,6 +117,13 @@ final class MethodChannelNativeLocalPlayerBridge
 
   Future<LocalPlayerBridgeResult> _invokeLifecycle(String method) async {
     try {
+      if (method == 'connect') {
+        final result = await _methodChannel.invokeMethod<Object?>(
+          method,
+          _connectionSettings.toMap(),
+        );
+        return LocalPlayerBridgeResult.fromMap(result);
+      }
       final result = await _methodChannel.invokeMethod<Object?>(method);
       return LocalPlayerBridgeResult.fromMap(result);
     } on PlatformException catch (error) {

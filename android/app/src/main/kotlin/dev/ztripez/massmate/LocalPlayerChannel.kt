@@ -22,8 +22,9 @@ import io.flutter.plugin.common.MethodChannel
  *
  * The event channel is `mass_mate/local_player/snapshots` and streams snapshot envelopes produced
  * by [LocalPlayerService]. Subscribing to the event channel observes the route-independent service;
- * it does not define whether the player is connected. All channel and service-connection mutable
- * state is handled on Android's main thread because this skeleton does no blocking work.
+ * it does not define whether the player is connected. Channel and service-binding state stays on
+ * Android's main thread, while [LocalPlayerService] completes connect/disconnect results
+ * asynchronously after enqueuing transport lifecycle work on its serial connection thread.
  */
 class LocalPlayerChannel private constructor(
     private val context: Context,
@@ -88,10 +89,14 @@ class LocalPlayerChannel private constructor(
         }
 
         when (call.method) {
-            "connect" -> withService(result) { localPlayer -> localPlayer.connect() }
-            "disconnect" -> withService(result) { localPlayer -> localPlayer.disconnect() }
-            "sendCommand" -> withService(result) { localPlayer ->
-                localPlayer.sendCommand(call.arguments as? Map<*, *>)
+            "connect" -> withService(result) { localPlayer, complete ->
+                localPlayer.connect(call.arguments as? Map<*, *>, complete)
+            }
+            "disconnect" -> withService(result) { localPlayer, complete ->
+                localPlayer.disconnect(complete)
+            }
+            "sendCommand" -> withService(result) { localPlayer, complete ->
+                complete(localPlayer.sendCommand(call.arguments as? Map<*, *>))
             }
             else -> result.notImplemented()
         }
@@ -147,11 +152,11 @@ class LocalPlayerChannel private constructor(
 
     private fun withService(
         result: MethodChannel.Result,
-        action: (LocalPlayerService) -> Map<String, Any?>,
+        action: (LocalPlayerService, (Map<String, Any?>) -> Unit) -> Unit,
     ) {
         val existingService = service
         if (existingService != null) {
-            result.success(action(existingService))
+            action(existingService) { envelope -> result.success(envelope) }
             return
         }
 
@@ -243,10 +248,10 @@ private data class BindingFailure(
 
 private data class PendingMethodAction(
     val result: MethodChannel.Result,
-    val action: (LocalPlayerService) -> Map<String, Any?>,
+    val action: (LocalPlayerService, (Map<String, Any?>) -> Unit) -> Unit,
 ) {
     fun completeWith(service: LocalPlayerService) {
-        result.success(action(service))
+        action(service) { envelope -> result.success(envelope) }
     }
 
     fun completeFailure(failure: BindingFailure) {
