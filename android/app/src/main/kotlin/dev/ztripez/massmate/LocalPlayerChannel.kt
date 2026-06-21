@@ -58,6 +58,16 @@ class LocalPlayerChannel private constructor(
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
             bindStarted = false
+
+            val failure = BindingFailure(
+                LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+                "Native local player service disconnected unexpectedly.",
+                mapOf("component" to name?.flattenToShortString()),
+            )
+            val pending = pendingMethodActions.toList()
+            pendingMethodActions.clear()
+            pending.forEach { action -> action.completeFailure(failure) }
+            eventSink?.error(failure.code, failure.message, failure.details)
         }
     }
 
@@ -121,11 +131,7 @@ class LocalPlayerChannel private constructor(
         service = null
 
         if (bindStarted) {
-            try {
-                appContext.unbindService(connection)
-            } catch (_: IllegalArgumentException) {
-                // The service was already unbound by the Android runtime; disposal remains complete.
-            }
+            appContext.unbindService(connection)
             bindStarted = false
         }
 
@@ -144,10 +150,7 @@ class LocalPlayerChannel private constructor(
             return
         }
 
-        val pendingAction: (LocalPlayerService) -> Unit = { localPlayer ->
-            result.success(action(localPlayer))
-        }
-        val pendingMethodAction = PendingMethodAction(result, pendingAction)
+        val pendingMethodAction = PendingMethodAction(result, action)
         pendingMethodActions.add(pendingMethodAction)
         val failure = ensureServiceBinding()
         if (failure != null) {
@@ -235,7 +238,7 @@ private data class BindingFailure(
 
 private data class PendingMethodAction(
     val result: MethodChannel.Result,
-    val action: (LocalPlayerService) -> Unit,
+    val action: (LocalPlayerService) -> Map<String, Any?>,
 ) {
     fun completeWith(service: LocalPlayerService) {
         result.success(action(service))
