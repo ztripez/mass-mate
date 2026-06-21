@@ -6,9 +6,10 @@ The model is intentionally separate from Music Assistant API wiring. It defines 
 
 ## Scope And Status
 
-- Current prototype behavior: the app implements a Now Playing shell with `WheelMode.seek`, `WheelMode.volume`, and `WheelMode.queue`. The MODE button cycles those modes. Queue movement is local demo state, not the list navigation layer defined here.
+- Current prototype behavior: the app implements a Now Playing shell with `WheelMode.seek`, `WheelMode.volume`, and `WheelMode.queue`. The MODE button cycles those modes. Queue movement is local demo state, not the future Queue screen/list navigation layer defined here.
 - Future target behavior: the app has a screen navigation layer and a list navigation layer. These layers compose with `WheelMode`; they do not add new wheel modes and they do not rename the MODE behavior switch.
 - This document does not implement Music Assistant integration, authentication, device discovery, real playback control, or UI behavior.
+- Canonical long-MODE target behavior: long-MODE opens or returns to screen-level navigation, also described as the global surface switcher in `docs/music-assistant-wheel-matrix.md`. It is not a `WheelMode` picker and it is not a direct output selector. Output selection lives under the Player Outputs screen.
 
 ## Terms
 
@@ -34,7 +35,7 @@ The target screen order is fixed for screen-level wheel navigation:
 | Screen | Purpose | Default list context | Current prototype status | Future target entry behavior |
 | --- | --- | --- | --- | --- |
 | Now Playing | Playback card, transport, active `WheelMode`, and preview feedback. | None. | Implemented as the only primary screen. | Center/select activates the screen. With no list focus, wheel rotation routes to active `WheelMode`. |
-| Queue | Inspect and act on the active playback queue. | Queue Items. | Current `WheelMode.queue` moves a local queue cursor only. | Center/select enters Queue Items at the saved cursor. |
+| Queue | Inspect and act on the active playback queue. | Queue Items. | Current `WheelMode.queue` moves a local queue cursor only. | Center/select enters Queue Items at the saved cursor. Future active queue list navigation is owned by this screen/list layer, not by `WheelMode.queue`. |
 | Library | Browse media collections. | Library root, then Artists, Albums, Tracks, Playlists, or Browse Folder. | Not implemented. | Center/select enters the saved library list stack or the Library root if no stack exists. |
 | Search | Enter a query with platform text input, then navigate results with the wheel. | Search Results once a query has results. | Not implemented. | Center/select focuses query entry when empty, or Search Results when results exist. |
 | Player Outputs | Choose active speakers, players, or groups. | Available Speakers. | Not implemented. | Center/select enters Available Speakers or the saved output list stack. |
@@ -46,15 +47,15 @@ These are the first list contexts the implementation should support. New context
 
 | List context | Owning screen | Rows | Center/select target | Long-center target | Back at root |
 | --- | --- | --- | --- | --- | --- |
-| Queue Items | Queue | Active queue entries. | Play or select the focused queue item through an explicit queue item intent. | Queue item actions such as remove or move. | Return to Queue screen context. |
+| Queue Items | Queue | Active queue entries. | Play or select the focused queue item through an explicit queue item intent. | Open focused queue item actions. Concrete Music Assistant queue actions remain defined by `docs/music-assistant-wheel-matrix.md`. | Return to Queue screen context. |
 | Artists | Library | Artists in the library. | Open the selected artist's child list. | Artist actions. | Return to Library screen context or previous library parent. |
 | Albums | Library | Albums, optionally scoped by artist or folder. | Open the album Tracks list. | Album actions. | Return to Library screen context or previous library parent. |
 | Tracks | Library | Tracks, optionally scoped by artist, album, playlist, folder, or search result. | Open a track action sheet or explicit play/select action. | Track actions. | Return to Library screen context or previous library parent. |
 | Playlists | Library | Saved playlists. | Open the playlist Tracks list. | Playlist actions. | Return to Library screen context or previous library parent. |
 | Browse Folder | Library | Folder children and media items. | Open child folders; open an action sheet for leaf media. | Folder or item actions. | Return to Library screen context or previous folder parent. |
 | Search Results | Search | Mixed search result rows. | Open child lists for containers; open an action sheet for leaf media. | Result item actions. | Return to Search screen context while preserving query text and results. |
-| Available Speakers | Player Outputs | Individual players/speakers. | Select the focused speaker as the active output target. | Speaker actions such as power or transfer. | Return to Player Outputs screen context. |
-| Groups | Player Outputs | Player groups. | Select the focused group as the active output target. | Group actions such as join, unjoin, or member management. | Return to Player Outputs screen context or previous output parent. |
+| Available Speakers | Player Outputs | Individual players/speakers. | Select the focused speaker as the active output target. | Open focused speaker actions. Concrete Music Assistant player actions remain defined by `docs/music-assistant-wheel-matrix.md`. | Return to Player Outputs screen context. |
+| Groups | Player Outputs | Player groups. | Select the focused group as the active output target. | Open focused group actions. Concrete Music Assistant group actions remain defined by `docs/music-assistant-wheel-matrix.md`. | Return to Player Outputs screen context or previous output parent. |
 
 ## Navigation State
 
@@ -69,7 +70,8 @@ The navigation owner should track:
 | `screenHistory` | Records deliberate screen changes so Back can return to the previous active screen. Duplicate adjacent entries are not stored. |
 | `navigationLayer` | `screen`, `list`, or `none`. `screen` routes wheel movement to screen candidates. `list` routes wheel movement to the active list frame. `none` means no navigation context has focus and wheel movement routes to `WheelMode`. |
 | `listStacksByScreen` | Each screen owns its own list stack and cursor state. Leaving a screen preserves that screen's stack until data invalidation or an explicit reset. |
-| `activeListFrame` | The top frame of the active screen's stack when `navigationLayer == list`. It stores list context, parent key/path, focused row, and scroll offset. |
+| `activeListFrame` | Derived from the top frame of the active screen's stack when `navigationLayer == list`. It stores list context, parent key/path, focused row, and scroll offset. |
+| `focusInvalidated` | Explicit state set when refreshed data removes the focused row or target. It must produce visible/accessibility feedback and block high-impact center/select actions until the user acknowledges, moves focus, or the deterministic retarget policy below resolves the focus. |
 | `wheelMode` | Remains the existing `WheelMode` value. It is independent from `navigationLayer` and must not be used to represent screen or list focus. |
 
 State composition rules:
@@ -79,6 +81,8 @@ State composition rules:
 - Screen-level navigation captures rotation for screen candidates. It must not adjust seek, volume, or queue cursor while the screen candidate is changing.
 - Back and MODE must cancel an active seek preview without committing it before changing navigation or `WheelMode` state.
 - The navigation layer must emit explicit intents for high-impact actions. It must not call Music Assistant commands directly.
+- Long-MODE from `navigationLayer == none`, including the startup Now Playing posture, enters `navigationLayer == screen` with `screenCandidate = activeScreen`. Rotation can then choose a different primary screen, and center/select is the only action that activates that candidate.
+- Screen and list boundary clamps must emit explicit boundary feedback, such as a visible edge state, accessibility announcement, haptic boundary event, or a testable boundary result. Silent discarded rotation is not compliant.
 
 ## Screen-Level Control Mapping
 
@@ -86,12 +90,12 @@ Screen-level navigation is active when `navigationLayer == screen`. It changes t
 
 | Control | Screen-level behavior |
 | --- | --- |
-| Rotate | Move `screenCandidate` through Now Playing, Queue, Library, Search, Player Outputs, and Settings. Movement clamps at the first and last screen; it does not wrap. |
+| Rotate | Move `screenCandidate` through Now Playing, Queue, Library, Search, Player Outputs, and Settings. Movement clamps at the first and last screen; it does not wrap, and boundary attempts must emit explicit boundary feedback. |
 | Center/select | Activate `screenCandidate`. If the screen changed, append the previous `activeScreen` to `screenHistory`. Enter the screen's saved default list when it has one. If the activated screen is Now Playing, clear navigation focus so rotation routes to `WheelMode`. |
 | Back | If `screenCandidate` differs from `activeScreen`, cancel the candidate and refocus `activeScreen`. Otherwise return to the previous screen from `screenHistory`. If no previous screen exists, provide invalid-action feedback and leave state unchanged. |
 | MODE | Change the active `WheelMode` only. It must not change `activeScreen`, `screenCandidate`, or any list cursor. Current prototype behavior is MODE cycling Seek, Volume, Queue. |
 | Long-center | Open screen-level context actions for the active screen or highlighted screen candidate. The opened actions are navigated as a list/action layer and require center/select confirmation. |
-| Long-MODE | Open the `WheelMode` picker at the screen layer. Choosing a mode changes `wheelMode` only and preserves screen and list navigation state. |
+| Long-MODE | Enter or keep screen-level navigation, the global surface switcher. Initialize `screenCandidate` from `activeScreen` when entering from `none` or `list`. It must not change `WheelMode`, playback state, or list stacks by itself. |
 
 ## List-Level Control Mapping
 
@@ -99,12 +103,12 @@ List-level navigation is active when `navigationLayer == list`. It moves within 
 
 | Control | List-level behavior |
 | --- | --- |
-| Rotate | Move the focused row and scroll position in the active list frame. Movement clamps at list boundaries; it does not wrap. Empty lists keep no focused row and emit invalid-action feedback on selection. |
+| Rotate | Move the focused row and scroll position in the active list frame. Movement clamps at list boundaries; it does not wrap, and boundary attempts must emit explicit boundary feedback. Empty lists keep no focused row and emit invalid-action feedback on selection. |
 | Center/select | Open or select the focused row. Container rows push a child list frame. Leaf rows emit an explicit select/open intent or open an action sheet, depending on the owning context table above. |
 | Back | Close an open action sheet first. Otherwise pop one child list frame. If already at the root frame, exit to screen-level navigation for the owning screen without changing `activeScreen`. |
 | MODE | Exit list navigation to the owning screen's screen context and preserve the full list stack and cursor state. A later center/select can re-enter the preserved list position. |
 | Long-center | Open item actions for the focused row. Destructive or high-impact actions require a separate center/select confirmation inside the action sheet. |
-| Long-MODE | Return directly to screen-level navigation for the owning screen from any nested list or action sheet. The list stack is preserved; no parent frames are popped. |
+| Long-MODE | Return directly to screen-level navigation, the global surface switcher, from any nested list or action sheet. The list stack is preserved; no parent frames are popped and `screenCandidate` starts at the owning screen. |
 
 Global transport controls are outside this navigation model: bottom play/pause remains play/pause for committed playback, and left/right retain the mode-specific transport/page semantics defined by the click-wheel contract and Music Assistant matrix. They must not silently commit an active seek preview.
 
@@ -117,7 +121,7 @@ General stack rules:
 - Pushing a child frame stores the parent focused row and scroll offset.
 - Popping a child frame restores the parent frame exactly where it was when the child opened.
 - Exiting list navigation with MODE or long-MODE preserves the entire stack.
-- Switching screens preserves each screen's stack. If fresh data later removes the saved focused row, restore focus to the nearest valid row; if the list becomes empty, restore no focused row and show empty-state feedback.
+- Switching screens preserves each screen's stack. If fresh data later removes the saved focused row, set `focusInvalidated` and surface visible/accessibility feedback before any high-impact action can run. Deterministic retargeting is allowed only in this order: same stable item id if still present, next item at the same index, previous item when the removed row was last, or no focus when the list is empty. Center/select on an invalidated focus acknowledges the state first; it must not play, mutate, transfer, or select the retargeted item until the user rotates or explicitly confirms after the invalidation feedback.
 - Back, MODE, and long-MODE never trigger playback, queue mutation, or output selection by themselves.
 
 Library examples:
@@ -139,8 +143,8 @@ Player Outputs examples:
 
 - Player Outputs screen -> Available Speakers.
 - Center/select on a speaker selects that speaker as the active output target through an explicit output selection intent.
-- Long-center on a speaker opens speaker actions; Back closes those actions and returns to Available Speakers.
-- Player Outputs screen -> Groups -> selected group actions or members. Back returns to Groups with the selected group focused, then to Player Outputs screen context.
+- Long-center on a speaker opens the speaker action sheet; concrete actions are defined by the Music Assistant matrix. Back closes the action sheet and returns to Available Speakers.
+- Player Outputs screen -> Groups -> selected group action sheet or member list. Back returns to Groups with the selected group focused, then to Player Outputs screen context.
 
 ## Testable Invariants
 
@@ -149,10 +153,13 @@ Future implementation and widget/resolver tests should treat these as required b
 - Rotating in screen context changes only `screenCandidate`.
 - Rotating in list context changes only the active list frame cursor/scroll state.
 - Rotating on Now Playing without navigation focus continues to use the active `WheelMode`.
+- Long-MODE from any layer enters screen-level navigation without changing playback, `WheelMode`, selected output, or list stacks.
 - Center/select is the only control that activates a screen candidate or opens/selects a focused list row.
 - Back from a child list restores the parent list's previous cursor and scroll offset.
 - Back from a root list exits to screen context and does not change the active screen.
 - MODE and long-MODE preserve list stacks and never commit seek previews.
+- Screen/list boundary rotation produces explicit boundary feedback rather than a silent no-op.
+- Focus invalidation after data refresh is visible/accessibility-exposed and blocks high-impact actions until acknowledged, moved, or explicitly reconfirmed after deterministic retargeting.
 - `WheelMode` remains Seek, Volume, or Queue until deliberately extended; screen and list focus are navigation layers, not wheel modes.
 
 ## Non-Goals

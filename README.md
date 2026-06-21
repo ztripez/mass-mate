@@ -6,7 +6,7 @@ Mass Mate is a greenfield Flutter companion player concept for Music Assistant, 
 
 - Mobile-first layout that keeps transport controls reachable with one thumb.
 - Large scroll wheel for coarse and fine adjustments.
-- Mode switching between seek, volume, and queue navigation.
+- Mode switching between seek, volume, and the current prototype queue cursor.
 - Visual feedback that makes wheel gestures predictable before backend integration.
 
 ## Interaction contracts
