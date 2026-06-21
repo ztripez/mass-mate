@@ -7,10 +7,19 @@ class FakeSendspinTransport(
     private val throwOnSendContaining: String? = null,
     private val throwOnClose: Boolean = false,
 ) : SendspinTransport {
+    /** Text frames accepted by [sendText], in send order, for protocol shape assertions. */
     val sentTexts = mutableListOf<String>()
+
+    /** Endpoint passed to [open], or `null` when the fake was never opened. */
     var endpoint: URI? = null
+
+    /** Whether [close] was called without a configured close failure. */
     var closed = false
+
+    /** WebSocket close code passed to [close], or `null` before close. */
     var closeCode: Int? = null
+
+    /** WebSocket close reason passed to [close], or `null` before close. */
     var closeReason: String? = null
     private var listener: SendspinTransport.Listener? = null
 
@@ -33,18 +42,22 @@ class FakeSendspinTransport(
         closeReason = reason
     }
 
+    /** Emits an `onOpen` callback to the controller listener registered by [open]. */
     fun opened() {
         listener?.onOpen()
     }
 
+    /** Emits an incoming text [text] frame to the registered controller listener. */
     fun receiveText(text: String) {
         listener?.onText(text)
     }
 
+    /** Emits a transport [error] callback to the registered controller listener. */
     fun fail(error: Throwable) {
         listener?.onFailure(error)
     }
 
+    /** Emits a peer close callback with WebSocket [code] and [reason]. */
     fun closedByPeer(code: Int, reason: String) {
         listener?.onClosed(code, reason)
     }
