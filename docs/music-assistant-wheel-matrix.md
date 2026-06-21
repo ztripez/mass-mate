@@ -50,17 +50,17 @@ Reference links:
 | Output surface | Choose active player/output/group | List navigation and player action sheet |
 | Playback options overlay | Shuffle, repeat, radio continuation, favorite | Small option list with explicit toggles |
 
-## UX strictness classification
+## UX strictness application
 
-Use these classes to decide which matrix rows must be wheel-first and which can use more ordinary mobile UI. The detailed contract is in `docs/wheel-ux-strictness.md`.
+`docs/wheel-ux-strictness.md` is the canonical taxonomy for the strictness classes named here. This matrix only applies those class names to feature rows so the detailed class meanings stay in one place.
 
-| Strictness class | Matrix rows and examples | Wheel UX expectation |
-| --- | --- | --- |
-| Immediate playback | Play / pause, previous / next track, audiobook / podcast chapter movement, scrub current track, fine/coarse seek precision, volume, mute | Very strict wheel-first flow. Keep these actions reachable from the primary playback posture with one-thumb operation, immediate feedback, and no required screen hop. |
-| Frequent session controls | Active queue navigation, play selected queue item, remove or clear queue item, shuffle, repeat, radio continuation, favorite current item, add item to queue / play next | Strict wheel-first flow. Use wheel-native modes, overlays, or context actions with explicit confirmation for mutations. |
-| Browsing/navigation | Browse library, search library, play album / playlist / radio station, item action sheets | Medium strictness. The wheel should navigate visible lists and focused actions, while text entry and deep browsing may use standard touch UI. |
-| Configuration/session setup | Select active player/output, transfer playback between players, join / unjoin group, power on/off player, provider selection | Relaxed setup/configuration flow. Keep reachable, but do not optimize for one-handed rapid changes before playback, queue, seek, volume, and browsing are solid. |
-| Settings/admin | Authentication / server discovery, diagnostics, server configuration, metadata refresh / admin actions | Normal app UI. Use conventional settings, forms, and confirmations; do not treat these as wheel-first playback flows. |
+| Matrix rows | UX strictness class |
+| --- | --- |
+| Play / pause; previous / next track; audiobook / podcast chapter movement; scrub current track; fine/coarse seek precision; volume; mute | Immediate playback |
+| Active queue navigation; remove queue item; clear queue; shuffle; repeat; radio continuation; favorite current item; add item to queue / play next | Frequent session controls |
+| Browse library; search library; play album / playlist / radio station; item action sheets | Browsing/navigation |
+| Select active player/output; transfer playback between players; join / unjoin group; power on/off player; provider selection | Configuration/session setup |
+| Authentication / server discovery; diagnostics; server configuration; metadata refresh / admin actions | Settings/admin |
 
 ## Music Assistant target button mapping
 

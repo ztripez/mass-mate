@@ -10,8 +10,8 @@ This document is product documentation only. It does not implement Music Assista
 
 | Class | Examples | UX strictness | Expectations |
 | --- | --- | --- | --- |
-| Immediate playback | Play/pause, seek and scrub preview, volume, previous/next track, chapter or relative skip | Very strict wheel-first | Must work from the primary playback posture with one thumb, visible state feedback, accessible labels, and no required screen hop. Wheel ticks and buttons should feel predictable during rapid repeated use. Seek remains preview-first and emits remote commands only on explicit commit. |
-| Frequent session controls | Queue navigation, play selected queue item, repeat, shuffle, favorite current item, queue item actions | Strict wheel-first | Should be reachable during an active listening session through wheel-native modes, overlays, or context actions. Flows may require explicit confirmation for mutation, but the wheel should own movement, focus, and confirmation. |
+| Immediate playback | Play/pause, seek and scrub preview, volume, mute, previous/next track, chapter or relative skip | Very strict wheel-first | Must work from the primary playback posture with one thumb, visible state feedback, accessible labels, and no required screen hop. Wheel ticks and buttons should feel predictable during rapid repeated use. Seek remains preview-first and emits remote commands only on explicit commit. |
+| Frequent session controls | Queue navigation, play selected queue item, repeat, shuffle, favorite current item, queue item actions | Strict wheel-first | Must be reachable during an active listening session through wheel-native modes, overlays, or context actions. Flows may require explicit confirmation for mutation, but the wheel should own movement, focus, and confirmation. |
 | Browsing/navigation | Library browsing, search result navigation, album/playlist/radio station browsing, item action sheets | Medium | Should support wheel-driven list movement and selection where lists are already on screen. Touch text entry and ordinary mobile list affordances are acceptable for query input and deep browsing. Do not optimize browsing ahead of immediate playback and frequent session controls. |
 | Configuration/session setup | Speaker output selection, player transfer, grouping and ungrouping, provider selection, player power actions | Relaxed setup/configuration | Must be discoverable and reachable, but does not need one-handed rapid-change optimization before playback, queue, seek, volume, and browsing are reliable. Standard list and confirmation flows are acceptable when they remain clear and safe. |
 | Settings/admin | Diagnostics, server configuration, authentication, discovery, metadata refresh, provider administration | Normal app UI | Can use conventional settings screens, forms, and touch controls. These surfaces should be explicit, safe, and understandable, but they are not wheel-first playback flows. |
@@ -27,7 +27,7 @@ This document is product documentation only. It does not implement Music Assista
 
 ## Matrix Usage
 
-`docs/music-assistant-wheel-matrix.md` contains the Music Assistant feature mapping and a compact strictness classification table. When adding or revising rows there, classify the feature by user-session urgency rather than by backend priority alone.
+`docs/music-assistant-wheel-matrix.md` contains the Music Assistant feature mapping and a compact row-to-strictness index that applies the class names defined here. When adding or revising rows there, classify the feature by user-session urgency rather than by backend priority alone.
 
 A feature can be high integration priority without being a strict wheel-first flow. For example, selected-player persistence may be necessary infrastructure for real playback, while speaker grouping remains a relaxed setup/configuration flow from a wheel UX perspective.
 
