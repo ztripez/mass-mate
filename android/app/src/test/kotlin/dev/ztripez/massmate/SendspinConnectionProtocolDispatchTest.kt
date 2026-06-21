@@ -103,6 +103,75 @@ class SendspinConnectionProtocolDispatchTest {
         assertEquals(SendspinMetadata(title = "Captured Song", artist = "Captured Artist"), events.metadata.single())
     }
 
+    @Test
+    fun rawNativeClientCommandSendsOnlyWhenReady() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+        )
+        var sendError: SendspinConnectionException? = SendspinConnectionException("unset", "unset")
+
+        connectReady(controller, transport)
+        controller.sendRawClientCommand(
+            SendspinClientCommand(
+                command = SendspinClientCommandKind.SEEK_TO,
+                requestId = "request-1",
+                positionMs = 42000L,
+            ),
+        ) { sendError = it }
+
+        val command = JSONObject(transport.sentTexts.last())
+        assertEquals(null, sendError)
+        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
+        assertEquals("client/command", command.getString("type"))
+        assertEquals("seekTo", command.getString("command"))
+        assertEquals("request-1", command.getString("requestId"))
+        assertEquals(42000L, command.getLong("positionMs"))
+    }
+
+    @Test
+    fun rawNativeClientCommandFailsVisiblyBeforeReady() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+        )
+        var sendError: SendspinConnectionException? = null
+
+        controller.sendRawClientCommand(SendspinClientCommand(SendspinClientCommandKind.PAUSE)) {
+            sendError = it
+        }
+
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED, sendError?.code)
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED, snapshots.last().error?.code)
+        assertEquals(true, transport.sentTexts.isEmpty())
+    }
+
+    @Test
+    fun rawNativeClientCommandSendFailureFailsSession() {
+        val transport = FakeSendspinTransport(throwOnSendContaining = "client/command")
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+        )
+        var sendError: SendspinConnectionException? = null
+
+        connectReady(controller, transport)
+        controller.sendRawClientCommand(SendspinClientCommand(SendspinClientCommandKind.PAUSE)) {
+            sendError = it
+        }
+
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, sendError?.code)
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, snapshots.last().error?.code)
+        assertEquals(true, transport.closed)
+    }
+
     private fun readySnapshotsBefore(text: String): List<SendspinConnectionSnapshot> {
         val transport = FakeSendspinTransport()
         val snapshots = mutableListOf<SendspinConnectionSnapshot>()

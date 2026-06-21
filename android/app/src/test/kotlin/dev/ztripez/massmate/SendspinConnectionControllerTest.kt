@@ -147,6 +147,9 @@ class SendspinConnectionControllerTest {
         assertEquals("client/state", JSONObject(transport.sentTexts[1]).getString("type"))
         assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("streamActive"))
         assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("audioOutputActive"))
+        assertEquals("client/time", JSONObject(transport.sentTexts[2]).getString("type"))
+        assertEquals("unavailable", JSONObject(transport.sentTexts[2]).getString("status"))
+        assertEquals("clock-sync-deferred", JSONObject(transport.sentTexts[2]).getString("reason"))
         assertTrue(snapshots[1].generation > snapshots[0].generation)
     }
 
