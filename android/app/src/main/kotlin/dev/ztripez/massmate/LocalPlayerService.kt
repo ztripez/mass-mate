@@ -175,7 +175,11 @@ class LocalPlayerService : Service() {
 
 /** Keeps service-local failures from advancing controller-owned snapshot generations. */
 object LocalPlayerSnapshotOrdering {
-    /** Returns whether a controller-produced [incoming] snapshot is newer than [current]. */
+    /** Returns whether controller-produced [incoming] may replace [current].
+     *
+     * Equal generations are accepted so controller snapshots can replace service-local failures that
+     * preserved the current generation instead of consuming a future controller generation.
+     */
     fun shouldApplyControllerSnapshot(
         current: SendspinConnectionSnapshot,
         incoming: SendspinConnectionSnapshot,
