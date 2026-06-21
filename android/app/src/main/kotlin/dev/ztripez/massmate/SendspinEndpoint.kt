@@ -34,7 +34,12 @@ object SendspinEndpointBuilder {
     }
 
     private fun fromMap(arguments: Map<*, *>?): SendspinServerSettings {
-        val serverUrl = arguments?.get("serverUrl") as? String
+        val bridgeArguments = arguments ?: throw SendspinConnectionException(
+            LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID,
+            "MASS_MATE_SENDSPIN_SERVER_URL is required for the native local-player backend.",
+            mapOf("field" to "serverUrl"),
+        )
+        val serverUrl = bridgeArguments["serverUrl"] as? String
         if (serverUrl.isNullOrBlank()) {
             throw SendspinConnectionException(
                 LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID,
@@ -43,8 +48,8 @@ object SendspinEndpointBuilder {
             )
         }
 
-        val path = if (arguments.containsKey("sendspinPath")) {
-            val configuredPath = arguments["sendspinPath"]
+        val path = if (bridgeArguments.containsKey("sendspinPath")) {
+            val configuredPath = bridgeArguments["sendspinPath"]
             if (configuredPath !is String || configuredPath.isBlank()) {
                 throw SendspinConnectionException(
                     LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID,

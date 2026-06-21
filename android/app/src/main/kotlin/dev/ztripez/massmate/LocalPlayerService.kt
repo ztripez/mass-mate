@@ -144,13 +144,13 @@ class LocalPlayerService : Service() {
     }
 
     private fun applyControllerSnapshot(snapshot: SendspinConnectionSnapshot) {
-        if (snapshot.generation < currentSnapshot.generation) return
+        if (!LocalPlayerSnapshotOrdering.shouldApplyControllerSnapshot(currentSnapshot, snapshot)) return
         currentSnapshot = snapshot
         emitSnapshot()
     }
 
     private fun applyLocalFailure(error: SendspinConnectionException) {
-        currentSnapshot = SendspinConnectionSnapshot.failed(currentSnapshot.generation, error)
+        currentSnapshot = LocalPlayerSnapshotOrdering.localFailure(currentSnapshot, error)
         emitSnapshot()
     }
 
@@ -171,4 +171,19 @@ class LocalPlayerService : Service() {
         val error = this ?: return LocalPlayerEnvelope.acceptedResult()
         return LocalPlayerEnvelope.failedResult(error.code, error.message, error.details)
     }
+}
+
+/** Keeps service-local failures from advancing controller-owned snapshot generations. */
+object LocalPlayerSnapshotOrdering {
+    /** Returns whether a controller-produced [incoming] snapshot is newer than [current]. */
+    fun shouldApplyControllerSnapshot(
+        current: SendspinConnectionSnapshot,
+        incoming: SendspinConnectionSnapshot,
+    ): Boolean = incoming.generation >= current.generation
+
+    /** Creates a visible local failure without consuming a future controller generation. */
+    fun localFailure(
+        current: SendspinConnectionSnapshot,
+        error: SendspinConnectionException,
+    ): SendspinConnectionSnapshot = SendspinConnectionSnapshot.failed(current.generation, error)
 }

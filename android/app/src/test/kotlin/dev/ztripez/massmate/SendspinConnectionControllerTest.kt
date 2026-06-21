@@ -33,6 +33,15 @@ class SendspinConnectionControllerTest {
                 mapOf("serverUrl" to "https://music.example.local/api"),
             ).toString(),
         )
+        assertEquals(
+            "wss://music.example.local/api/custom-sendspin",
+            SendspinEndpointBuilder.fromBridgeArguments(
+                mapOf(
+                    "serverUrl" to "https://music.example.local/api",
+                    "sendspinPath" to "/custom-sendspin",
+                ),
+            ).toString(),
+        )
     }
 
     @Test
@@ -320,6 +329,24 @@ class SendspinConnectionControllerTest {
         assertFalse(first.sentTexts.contains(SendspinProtocolHandshake.clientGoodbye()))
         assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
         assertEquals(1, snapshots.count { it.status == SendspinConnectionStatus.READY })
+    }
+
+    @Test
+    fun localFailuresDoNotConsumeFutureControllerGenerations() {
+        val current = SendspinConnectionSnapshot.disconnected(generation = 3)
+        val localFailure = LocalPlayerSnapshotOrdering.localFailure(
+            current,
+            SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
+                LocalPlayerEnvelope.NOT_CONNECTED_MESSAGE,
+            ),
+        )
+        val laterReady = SendspinConnectionSnapshot.ready(generation = 4)
+
+        assertEquals(3, localFailure.generation)
+        assertTrue(
+            LocalPlayerSnapshotOrdering.shouldApplyControllerSnapshot(localFailure, laterReady),
+        )
     }
 
     private fun endpoint(serverUrl: String, path: String): String {
