@@ -93,7 +93,8 @@ enum class SendspinClientCommandKind(val wireValue: String) {
  * Typed `client/command` protocol serializer.
  *
  * This builder exists for native Sendspin protocol shapes only. It is not wired to Flutter
- * `PlaybackIntent`, wheel preview, or command execution; that mapping is owned by a later slice.
+ * `PlaybackIntent`, wheel preview, or command execution; Flutter intent mapping is not performed by
+ * this serializer.
  *
  * @property command Required raw native protocol command to serialize.
  * @property requestId Optional native request identifier.

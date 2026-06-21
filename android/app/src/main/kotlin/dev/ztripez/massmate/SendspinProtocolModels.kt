@@ -8,7 +8,8 @@ package dev.ztripez.massmate
  * @property positionMs Optional committed playback position in milliseconds. `null` means omitted
  * and must not clear previous native state by itself.
  * @property durationMs Optional media duration in milliseconds; `null` means unknown or omitted.
- * @property volume Optional normalized volume; `null` means omitted and is not mapped to Dart here.
+ * @property volume Optional normalized volume; `null` means omitted and native-to-Dart snapshot
+ * mapping is not performed by this model.
  */
 data class SendspinServerState(
     val playbackState: String,
@@ -21,7 +22,13 @@ data class SendspinServerState(
  * Media metadata parsed from native Sendspin protocol.
  *
  * Optional `null` properties mean the field was omitted, not that known UI metadata should be
- * erased. Snapshot bridge mapping is owned by a later native-to-Dart mapping slice.
+ * erased. Native-to-Dart snapshot mapping is not performed by this model.
+ *
+ * @property title Optional track or stream title supplied by the server.
+ * @property subtitle Optional secondary display line supplied by the server.
+ * @property artist Optional artist name supplied by the server.
+ * @property album Optional album name supplied by the server.
+ * @property artworkUrl Optional artwork URL string supplied by the server.
  */
 data class SendspinMetadata(
     val title: String? = null,
@@ -40,8 +47,8 @@ enum class SendspinStreamCodec(val wireValue: String) {
 /**
  * Stream-start descriptor for a future native stream owner.
  *
- * @property streamId Required server stream identifier for later binary frames; this slice does not
- * buffer binary data.
+ * @property streamId Required server stream identifier for future binary frames; this model does
+ * not buffer binary data.
  * @property codec Required validated codec descriptor. Validation does not claim audio support.
  * @property sampleRateHz Required sample rate in hertz. Unsupported values fail during parse.
  * @property channels Required channel count. Unsupported counts fail during parse.
@@ -57,7 +64,7 @@ data class SendspinStreamStart(
  * Stream-clear descriptor for a future native stream owner.
  *
  * @property streamId Optional server stream identifier. `null` means clear all stream-owned native
- * state once the stream/buffer slice exists.
+ * state once stream buffering ownership exists.
  */
 data class SendspinStreamClear(val streamId: String? = null)
 

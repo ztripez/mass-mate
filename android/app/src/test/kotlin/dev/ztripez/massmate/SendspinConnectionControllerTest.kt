@@ -154,6 +154,12 @@ class SendspinConnectionControllerTest {
     }
 
     @Test
+    fun initialClientProtocolStatusSendFailuresFailBeforeReady() {
+        assertInitialStatusSendFailure("client/state")
+        assertInitialStatusSendFailure("client/time")
+    }
+
+    @Test
     fun controllerReportsTransportFailureAndPrematureClose() {
         val transport = FakeSendspinTransport()
         val snapshots = mutableListOf<SendspinConnectionSnapshot>()
@@ -377,5 +383,20 @@ class SendspinConnectionControllerTest {
             return
         }
         throw AssertionError("Expected SendspinConnectionException with code $expectedCode")
+    }
+
+    private fun assertInitialStatusSendFailure(failingMessageType: String) {
+        val transport = FakeSendspinTransport(throwOnSendContaining = failingMessageType)
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = controller(transport, snapshots)
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        transport.receiveText(serverHello())
+
+        assertFalse(snapshots.any { it.status == SendspinConnectionStatus.READY })
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, snapshots.last().error?.code)
+        assertTrue(snapshots.last().error?.message.orEmpty().contains("initial Sendspin client protocol status"))
     }
 }

@@ -8,7 +8,7 @@ import org.junit.Test
 
 class SendspinConnectionProtocolDispatchTest {
     @Test
-    fun postReadyUnknownTextIsLoggedAndIgnored() {
+    fun postReadyUnknownTextFailsVisibly() {
         val transport = FakeSendspinTransport()
         val snapshots = mutableListOf<SendspinConnectionSnapshot>()
         val logger = CapturingProtocolLogger()
@@ -21,7 +21,7 @@ class SendspinConnectionProtocolDispatchTest {
         connectReady(controller, transport)
         transport.receiveText("{\"type\":\"server/future\",\"value\":1}")
 
-        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
+        assertProtocolFailure(snapshots)
         assertEquals(listOf("server/future"), logger.unknownTypes())
     }
 
@@ -43,16 +43,25 @@ class SendspinConnectionProtocolDispatchTest {
 
     @Test
     fun productionDispatchFailsKnownUnsupportedFamilies() {
+        val stateSnapshots = readySnapshotsBefore("{\"type\":\"server/state\",\"playbackState\":\"playing\"}")
+        val metadataSnapshots = readySnapshotsBefore("{\"type\":\"server/metadata\",\"title\":\"Track\"}")
         val streamSnapshots = readySnapshotsBefore(
             "{\"type\":\"stream/start\",\"streamId\":\"stream-1\",\"codec\":\"pcm\",\"sampleRateHz\":48000," +
                 "\"channels\":2}",
         )
         val commandSnapshots = readySnapshotsBefore("{\"type\":\"server/command\",\"command\":\"pause\"}")
+        val statusSnapshots = readySnapshotsBefore("{\"type\":\"server/status\",\"status\":\"ok\"}")
 
+        assertProtocolFailure(stateSnapshots)
+        assertTrue(stateSnapshots.last().error?.message.orEmpty().contains("server/state"))
+        assertProtocolFailure(metadataSnapshots)
+        assertTrue(metadataSnapshots.last().error?.message.orEmpty().contains("server/metadata"))
         assertProtocolFailure(streamSnapshots)
         assertTrue(streamSnapshots.last().error?.message.orEmpty().contains("stream/start"))
         assertProtocolFailure(commandSnapshots)
         assertTrue(commandSnapshots.last().error?.message.orEmpty().contains("server/command"))
+        assertProtocolFailure(statusSnapshots)
+        assertTrue(statusSnapshots.last().error?.message.orEmpty().contains("server/status"))
     }
 
     @Test
@@ -149,6 +158,28 @@ class SendspinConnectionProtocolDispatchTest {
         assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
         assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED, snapshots.last().error?.code)
         assertEquals(true, transport.sentTexts.isEmpty())
+    }
+
+    @Test
+    fun rawNativeClientCommandFailsVisiblyDuringActiveHandshakeBeforeReady() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+        )
+        var sendError: SendspinConnectionException? = null
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        controller.sendRawClientCommand(SendspinClientCommand(SendspinClientCommandKind.PAUSE)) {
+            sendError = it
+        }
+
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED, sendError?.code)
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED, snapshots.last().error?.code)
+        assertEquals(false, transport.sentTexts.any { JSONObject(it).getString("type") == "client/command" })
     }
 
     @Test

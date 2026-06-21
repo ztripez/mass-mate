@@ -74,12 +74,14 @@ class SendspinProtocolDispatcherTest {
     }
 
     @Test
-    fun dispatcherLogsAndIgnoresUnknownMessages() {
+    fun dispatcherLogsAndFailsUnknownMessages() {
         val events = RecordingEvents()
         val logger = RecordingLogger()
         val dispatcher = SendspinProtocolDispatcher(events = events, logger = logger)
 
-        dispatcher.dispatch(json("server/future").put("payload", true).toString())
+        assertProtocolError {
+            dispatcher.dispatch(json("server/future").put("payload", true).toString())
+        }
 
         assertEquals(listOf("server/future"), logger.unknownTypes())
         assertFalse(events.hasAnyEvent())

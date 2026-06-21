@@ -105,7 +105,7 @@ class LocalPlayerService : Service() {
      *
      * Invalid envelopes return `LOCAL_PLAYER_INVALID_ENVELOPE`. Valid commands require
      * [SendspinConnectionStatus.READY]; otherwise the service emits and returns
-     * `LOCAL_PLAYER_NOT_CONNECTED`. Because command dispatch is outside this handshake slice,
+     * `LOCAL_PLAYER_NOT_CONNECTED`. Because Flutter command dispatch is not implemented yet,
      * ready-state commands return `LOCAL_PLAYER_REJECTED` instead of pretending success.
      */
     fun sendCommand(envelope: Map<*, *>?): Map<String, Any?> {

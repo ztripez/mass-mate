@@ -116,9 +116,17 @@ typealias SendspinProtocolSendResult = (SendspinConnectionException?) -> Unit
  * client hello was sent, closes with [SendspinTransport.NORMAL_CLOSURE], and any later callbacks
  * from that old session are ignored by session id. If replacement goodbye fails, the reconnect is
  * not opened and a failed snapshot/result are emitted. Post-handshake text is parsed by the native
- * protocol dispatcher so unknown message types are logged/ignored while invalid known messages fail
- * visibly through snapshots. [sendRawClientCommand] is native protocol serialization only; Flutter
- * intent-to-command mapping remains outside this slice.
+ * protocol dispatcher so unknown message types and invalid known messages fail visibly through
+ * snapshots. [sendRawClientCommand] is native protocol serialization only; Flutter
+ * intent-to-command mapping remains unimplemented in this controller.
+ *
+ * @param transportFactory Creates a fresh text transport for each new Sendspin connection attempt.
+ * @param onSnapshot Receives every lifecycle snapshot emitted by the controller.
+ * @param queue Serializes lifecycle calls and transport callbacks; defaults to immediate execution
+ * for deterministic unit tests.
+ * @param protocolEvents Optional native owner for parsed post-handshake protocol events. `null`
+ * selects [FailHardSendspinProtocolEvents], which fails visibly for families without owners.
+ * @param protocolLogger Logger for protocol diagnostics before visible failures.
  */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,

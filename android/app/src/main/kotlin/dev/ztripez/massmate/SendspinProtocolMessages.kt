@@ -5,7 +5,7 @@ import org.json.JSONObject
 /**
  * Parses and dispatches post-handshake Sendspin text protocol messages.
  *
- * @param logger Native logger for unknown message types and diagnostic event sinks.
+ * @param logger Native logger for unknown message diagnostics before visible failure.
  * @param events Native callback sink that owns supported parsed message families.
  */
 class SendspinProtocolDispatcher(
@@ -15,9 +15,9 @@ class SendspinProtocolDispatcher(
     /**
      * Parses [text] and routes known messages to native protocol owners.
      *
-     * Unknown message types are logged and ignored. Malformed JSON, missing required fields, invalid
-     * known messages, unsupported descriptor values, unsupported production families, and
-     * `server/error` messages throw [SendspinConnectionException] with
+     * Unknown message types, malformed JSON, missing required fields, invalid known messages,
+     * unsupported descriptor values, unsupported production families, and `server/error` messages
+     * throw [SendspinConnectionException] with
      * [LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR].
      */
     fun dispatch(text: String) {
@@ -32,8 +32,16 @@ class SendspinProtocolDispatcher(
             SERVER_COMMAND_TYPE -> events.onServerCommand(parseServerCommand(json))
             SERVER_STATUS_TYPE -> events.onServerStatus(parseServerStatus(json))
             SERVER_ERROR_TYPE -> dispatchServerProtocolError(parseServerProtocolError(json))
-            else -> logger.warn("Ignoring unknown Sendspin message type.", mapOf("type" to type))
+            else -> throw unknownMessageType(type)
         }
+    }
+
+    private fun unknownMessageType(type: String): SendspinConnectionException {
+        logger.warn("Received unsupported Sendspin message type.", mapOf("type" to type))
+        return SendspinProtocolJson.protocolError(
+            "Unsupported Sendspin message type `$type`.",
+            mapOf("type" to type),
+        )
     }
 
     private fun parseServerState(json: JSONObject): SendspinServerState = SendspinServerState(

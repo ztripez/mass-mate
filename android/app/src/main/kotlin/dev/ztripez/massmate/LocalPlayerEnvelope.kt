@@ -44,7 +44,7 @@ object LocalPlayerEnvelope {
 
     /** User-visible rejection for ready-state commands before command dispatch exists. */
     const val COMMAND_DISPATCH_DEFERRED_MESSAGE =
-        "Native local player is connected, but command dispatch is not implemented in this slice."
+        "Native local player is connected, but Flutter command dispatch is not implemented."
 
     /** Creates a successful method result envelope. */
     fun acceptedResult(): Map<String, Any?> = mapOf("accepted" to true)

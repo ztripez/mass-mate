@@ -29,7 +29,7 @@ interface SendspinProtocolEvents {
     /** Handoff for server playback/state [state]; direct Flutter UI consumption is forbidden. */
     fun onServerState(state: SendspinServerState)
 
-    /** Handoff for server media [metadata]; Dart snapshot mapping remains owned by a later slice. */
+    /** Handoff for server media [metadata]; native-to-Dart snapshot mapping is not performed here. */
     fun onMetadata(metadata: SendspinMetadata)
 
     /** Handoff for validated stream [stream] start descriptors; buffering/audio are deferred. */
@@ -54,17 +54,19 @@ interface SendspinProtocolEvents {
 /**
  * Production event sink for known families that have no native owner yet.
  *
- * @param logger Native logger used for non-fatal state, metadata, status, and error diagnostics.
+ * @param logger Native logger used for diagnostics immediately before visible protocol failures.
  */
 class FailHardSendspinProtocolEvents(
     private val logger: SendspinProtocolLogger,
 ) : SendspinProtocolEvents {
     override fun onServerState(state: SendspinServerState) {
-        logger.warn("Received Sendspin server state before snapshot mapping exists.")
+        logger.warn("Received Sendspin server state before native snapshot ownership exists.")
+        throw unsupportedFamily("server/state")
     }
 
     override fun onMetadata(metadata: SendspinMetadata) {
-        logger.warn("Received Sendspin metadata before snapshot mapping exists.")
+        logger.warn("Received Sendspin metadata before native snapshot ownership exists.")
+        throw unsupportedFamily("server/metadata")
     }
 
     override fun onStreamStart(stream: SendspinStreamStart) {
@@ -85,6 +87,7 @@ class FailHardSendspinProtocolEvents(
 
     override fun onServerStatus(status: SendspinServerStatus) {
         logger.warn("Received Sendspin server status.", mapOf("status" to status.status))
+        throw unsupportedFamily("server/status")
     }
 
     override fun onServerProtocolError(error: SendspinServerProtocolError) {
@@ -93,7 +96,7 @@ class FailHardSendspinProtocolEvents(
 
     private fun unsupportedFamily(type: String): SendspinConnectionException =
         SendspinProtocolJson.protocolError(
-            "Sendspin message family `$type` has no native owner in this implementation slice.",
+            "Sendspin message family `$type` has no native owner in the Android local-player service.",
             mapOf("type" to type),
         )
 }
