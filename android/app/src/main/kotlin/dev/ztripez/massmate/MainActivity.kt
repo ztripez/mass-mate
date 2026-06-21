@@ -53,6 +53,8 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        LocalPlayerChannel.register(this, messenger)
     }
 
     private fun boundaryBuzz(): Boolean {

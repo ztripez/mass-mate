@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../playback/playback_intent.dart';
 import '../playback/playback_intent_projection.dart';
 import '../playback/player_adapter.dart';
@@ -23,15 +25,27 @@ final class MusicAssistantPlayerAdapter implements PlayerAdapter {
 
   final MusicAssistantClient _client;
   final String _targetId;
+  final StreamController<PlayerState> _states =
+      StreamController<PlayerState>.broadcast(sync: true);
   PlayerState _state;
 
   @override
   PlayerState get state => _state;
 
   @override
+  Stream<PlayerState> get states => _states.stream;
+
+  @override
+  Future<PlayerState> connect() async => _state;
+
+  @override
+  Future<PlayerState> disconnect() async => _state;
+
+  @override
   Future<PlayerState> applyIntent(PlaybackIntent intent) async {
     await _client.applyIntent(targetId: _targetId, intent: intent);
     _state = projectPlaybackIntent(_state, intent);
+    _states.add(_state);
     return _state;
   }
 

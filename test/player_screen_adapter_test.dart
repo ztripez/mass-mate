@@ -187,15 +187,27 @@ final class _RecordingPlayerAdapter implements PlayerAdapter {
       : _state = initialState ?? PlayerState.localDemo();
 
   final List<PlaybackIntent> intents = [];
+  final StreamController<PlayerState> _states =
+      StreamController<PlayerState>.broadcast(sync: true);
   PlayerState _state;
 
   @override
   PlayerState get state => _state;
 
   @override
+  Stream<PlayerState> get states => _states.stream;
+
+  @override
+  Future<PlayerState> connect() async => _state;
+
+  @override
+  Future<PlayerState> disconnect() async => _state;
+
+  @override
   Future<PlayerState> applyIntent(PlaybackIntent intent) async {
     intents.add(intent);
     _state = projectPlaybackIntent(_state, intent);
+    _states.add(_state);
     return _state;
   }
 }
@@ -205,16 +217,28 @@ final class _DelayedPlayerAdapter implements PlayerAdapter {
 
   final List<PlaybackIntent> intents = [];
   final Completer<void> _pendingIntent = Completer<void>();
+  final StreamController<PlayerState> _states =
+      StreamController<PlayerState>.broadcast(sync: true);
   PlayerState _state;
 
   @override
   PlayerState get state => _state;
 
   @override
+  Stream<PlayerState> get states => _states.stream;
+
+  @override
+  Future<PlayerState> connect() async => _state;
+
+  @override
+  Future<PlayerState> disconnect() async => _state;
+
+  @override
   Future<PlayerState> applyIntent(PlaybackIntent intent) async {
     intents.add(intent);
     await _pendingIntent.future;
     _state = projectPlaybackIntent(_state, intent);
+    _states.add(_state);
     return _state;
   }
 

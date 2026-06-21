@@ -37,8 +37,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   WheelMode _mode = WheelMode.seek;
   final WheelIntentResolver _wheelIntentResolver = WheelIntentResolver();
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  String? _playbackError;
 
   PlayerAdapter get _playerAdapter => widget.playerAdapter;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToPlayerAdapter();
+  }
+
+  @override
+  void didUpdateWidget(PlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playerAdapter == widget.playerAdapter) return;
+
+    unawaited(_playerStateSubscription?.cancel());
+    _subscribeToPlayerAdapter();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_playerStateSubscription?.cancel());
+    super.dispose();
+  }
+
+  void _subscribeToPlayerAdapter() {
+    _playerStateSubscription = _playerAdapter.states.listen(
+      (_) {
+        if (!mounted) return;
+        setState(() => _playbackError = null);
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() => _playbackError = _visiblePlaybackError(error));
+      },
+    );
+  }
 
   void _handleWheelGesture(WheelGesture gesture) {
     final resolution = _wheelIntentResolver.resolve(
@@ -76,10 +112,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _applyPlaybackIntent(PlaybackIntent intent) async {
-    await _playerAdapter.applyIntent(intent);
-    if (!mounted) return;
+    try {
+      await _playerAdapter.applyIntent(intent);
+      if (!mounted) return;
 
-    setState(() {});
+      setState(() => _playbackError = null);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _playbackError = _visiblePlaybackError(error));
+    }
   }
 
   void _commitSeekPreview() {
@@ -91,11 +132,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _applySeekCommitIntent(PlaybackIntent intent) async {
-    await _playerAdapter.applyIntent(intent);
-    if (!mounted) return;
+    try {
+      await _playerAdapter.applyIntent(intent);
+      if (!mounted) return;
 
-    setState(_wheelIntentResolver.completeSeekPreviewCommit);
-    _pulseSeekCommitHaptics();
+      setState(() {
+        _playbackError = null;
+        _wheelIntentResolver.completeSeekPreviewCommit();
+      });
+      _pulseSeekCommitHaptics();
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _playbackError = _visiblePlaybackError(error));
+    }
+  }
+
+  String _visiblePlaybackError(Object error) {
+    return error is Exception ? error.toString() : 'Playback failed: $error';
   }
 
   void _handleWheelGestureEnded() {
@@ -176,6 +229,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       playerName: playerState.playerName,
                       connectionLabel: playerState.connectionLabel,
                     ),
+                    if (_playbackError != null) ...[
+                      const SizedBox(height: 8),
+                      _PlaybackErrorBanner(message: _playbackError!),
+                    ],
                     const SizedBox(height: 20),
                     Expanded(
                       child: Row(
@@ -211,6 +268,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     playerName: playerState.playerName,
                     connectionLabel: playerState.connectionLabel,
                   ),
+                  if (_playbackError != null) ...[
+                    const SizedBox(height: 8),
+                    _PlaybackErrorBanner(message: _playbackError!),
+                  ],
                   SizedBox(height: isCompactLayout ? 8 : 12),
                   Expanded(
                     child: _buildNowPlayingCard(
@@ -601,6 +662,43 @@ class _ConnectionHeader extends StatelessWidget {
         ),
         _StatusPill(icon: Icons.wifi_tethering, text: connectionLabel),
       ],
+    );
+  }
+}
+
+class _PlaybackErrorBanner extends StatelessWidget {
+  const _PlaybackErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline, color: colorScheme.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(color: colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
