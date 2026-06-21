@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'click_wheel.dart';
 import 'haptics.dart';
+import 'player_connection_status.dart';
 import 'playback/playback_duration_format.dart';
 import 'playback/playback_intent.dart';
 import 'playback/player_adapter.dart';
@@ -225,7 +226,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                 return Column(
                   children: [
-                    _ConnectionStatusBlock(
+                    PlayerConnectionStatusBlock(
                       playerState: playerState,
                       playbackError: _playbackError,
                     ),
@@ -260,7 +261,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               return Column(
                 children: [
-                  _ConnectionStatusBlock(
+                  PlayerConnectionStatusBlock(
                     playerState: playerState,
                     playbackError: _playbackError,
                   ),
@@ -524,7 +525,7 @@ class _NowPlayingCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: denseSpacing ? 8 : 16),
-                _StatusPill(
+                PlayerStatusPill(
                   icon: isPreviewingSeek ? Icons.travel_explore : mode.icon,
                   text:
                       isPreviewingSeek ? 'Seek preview' : '${mode.label} mode',
@@ -627,125 +628,6 @@ class _UnsupportedViewportMessage extends StatelessWidget {
           'Use a larger phone viewport or rotate to a wider layout.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
-        ),
-      ),
-    );
-  }
-}
-
-class _ConnectionHeader extends StatelessWidget {
-  const _ConnectionHeader(
-      {required this.playerName, required this.connectionLabel});
-
-  final String playerName;
-  final String connectionLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(Icons.speaker_group),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            playerName,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-        ),
-        _StatusPill(icon: Icons.wifi_tethering, text: connectionLabel),
-      ],
-    );
-  }
-}
-
-class _ConnectionStatusBlock extends StatelessWidget {
-  const _ConnectionStatusBlock({
-    required this.playerState,
-    required this.playbackError,
-  });
-
-  final PlayerState playerState;
-  final String? playbackError;
-
-  @override
-  Widget build(BuildContext context) {
-    final error = playbackError;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _ConnectionHeader(
-          playerName: playerState.playerName,
-          connectionLabel: playerState.connectionLabel,
-        ),
-        if (error != null) ...[
-          const SizedBox(height: 8),
-          _PlaybackErrorBanner(message: error),
-        ],
-      ],
-    );
-  }
-}
-
-class _PlaybackErrorBanner extends StatelessWidget {
-  const _PlaybackErrorBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Icon(Icons.error_outline, color: colorScheme.onErrorContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(color: colorScheme.onErrorContainer),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 6),
-            Text(text),
-          ],
         ),
       ),
     );

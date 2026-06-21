@@ -27,49 +27,74 @@ class LocalPlayerService : Service() {
 
     /** Binder exposing the service instance to the platform-channel registrar. */
     inner class LocalBinder : Binder() {
+        /** Bound [LocalPlayerService] instance used by [LocalPlayerChannel] to call service APIs. */
         val service: LocalPlayerService
             get() = this@LocalPlayerService
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
 
-    /** Registers a listener for typed local-player snapshot envelopes. */
+    /**
+     * Registers a listener for typed local-player snapshot envelopes.
+     *
+     * The listener immediately receives the current snapshot map and then receives subsequent
+     * snapshots caused by [connect], [disconnect], or [sendCommand]. Passing `null` clears the
+     * listener. Failed and unavailable snapshots include an `error` payload using
+     * [LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE] or
+     * [LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED].
+     */
     fun setSnapshotListener(listener: ((Map<String, Any?>) -> Unit)?) {
         snapshotListener = listener
         listener?.invoke(currentSnapshot())
     }
 
-    /** Requests a local-player connection and reports explicit unavailability for this skeleton. */
+    /**
+     * Requests a local-player connection and reports explicit unavailability for this skeleton.
+     *
+     * Returns `{ accepted: false, error: { code: LOCAL_PLAYER_UNAVAILABLE, message } }` and emits
+     * an unavailable snapshot. No transport, network, protocol, or audio work starts in this issue.
+     */
     fun connect(): Map<String, Any?> {
         state = LocalPlayerServiceState.UNAVAILABLE
         emitSnapshot()
-        return failedResult(
-            LOCAL_PLAYER_UNAVAILABLE,
-            "Native local player service is present, but transport is not implemented yet.",
+        return LocalPlayerEnvelope.failedResult(
+            LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+            LocalPlayerEnvelope.TRANSPORT_UNIMPLEMENTED_MESSAGE,
         )
     }
 
-    /** Requests an explicit local-player disconnect without destroying route-independent ownership. */
+    /**
+     * Requests an explicit local-player disconnect without destroying route-independent ownership.
+     *
+     * Returns `{ accepted: true }` and emits a disconnected snapshot. Route unmounts do not call
+     * this method; only explicit adapter lifecycle requests should disconnect the local player.
+     */
     fun disconnect(): Map<String, Any?> {
         state = LocalPlayerServiceState.DISCONNECTED
         emitSnapshot()
-        return acceptedResult()
+        return LocalPlayerEnvelope.acceptedResult()
     }
 
-    /** Sends an intent-level Mass Mate playback command envelope to the native backend seam. */
+    /**
+     * Sends an intent-level Mass Mate playback command envelope to the native backend seam.
+     *
+     * [envelope] must contain a string `command` field naming a Mass Mate operation. Invalid
+     * envelopes return `LOCAL_PLAYER_INVALID_ENVELOPE`. Valid commands return
+     * `LOCAL_PLAYER_NOT_CONNECTED` in this skeleton and emit a failed not-connected snapshot.
+     */
     fun sendCommand(envelope: Map<*, *>?): Map<String, Any?> {
         if (envelope?.get("command") !is String) {
-            return failedResult(
-                LOCAL_PLAYER_INVALID_ENVELOPE,
-                "Local player command envelope is missing an intent-level command.",
+            return LocalPlayerEnvelope.failedResult(
+                LocalPlayerEnvelope.LOCAL_PLAYER_INVALID_ENVELOPE,
+                LocalPlayerEnvelope.INVALID_COMMAND_ENVELOPE_MESSAGE,
             )
         }
 
         state = LocalPlayerServiceState.FAILED_NOT_CONNECTED
         emitSnapshot()
-        return failedResult(
-            LOCAL_PLAYER_NOT_CONNECTED,
-            "Native local player is not connected.",
+        return LocalPlayerEnvelope.failedResult(
+            LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
+            LocalPlayerEnvelope.NOT_CONNECTED_MESSAGE,
         )
     }
 
@@ -78,45 +103,13 @@ class LocalPlayerService : Service() {
     }
 
     private fun currentSnapshot(): Map<String, Any?> {
-        val error = state.errorEnvelope()
-        return mutableMapOf<String, Any?>(
-            "connectionStatus" to state.connectionStatus,
-            "playerName" to "Mass Mate",
-            "connectionLabel" to state.connectionLabel,
-            "mediaTitle" to state.mediaTitle,
-            "mediaSubtitle" to state.mediaSubtitle,
-            "positionMs" to 0,
-            "trackLengthMs" to 1,
-            "volume" to 0.0,
-            "queueIndex" to 1,
-            "queueMinIndex" to 1,
-            "queueMaxIndex" to 1,
-            "isPlaying" to false,
-        ).apply {
-            if (error != null) this["error"] = error
-        }
-    }
-
-    private fun acceptedResult(): Map<String, Any?> = mapOf("accepted" to true)
-
-    private fun failedResult(
-        code: String,
-        message: String,
-        details: Map<String, Any?>? = null,
-    ): Map<String, Any?> =
-        mapOf(
-            "accepted" to false,
-            "error" to mapOf(
-                "code" to code,
-                "message" to message,
-                "details" to details,
-            ),
+        return LocalPlayerEnvelope.snapshot(
+            connectionStatus = state.connectionStatus,
+            connectionLabel = state.connectionLabel,
+            mediaTitle = state.mediaTitle,
+            mediaSubtitle = state.mediaSubtitle,
+            error = state.errorEnvelope(),
         )
-
-    private companion object {
-        const val LOCAL_PLAYER_UNAVAILABLE = "LOCAL_PLAYER_UNAVAILABLE"
-        const val LOCAL_PLAYER_NOT_CONNECTED = "LOCAL_PLAYER_NOT_CONNECTED"
-        const val LOCAL_PLAYER_INVALID_ENVELOPE = "LOCAL_PLAYER_INVALID_ENVELOPE"
     }
 }
 
@@ -148,14 +141,13 @@ private enum class LocalPlayerServiceState(
     fun errorEnvelope(): Map<String, Any?>? {
         return when (this) {
             DISCONNECTED -> null
-            UNAVAILABLE -> mapOf(
-                "code" to "LOCAL_PLAYER_UNAVAILABLE",
-                "message" to
-                    "Native local player service is present, but transport is not implemented yet.",
+            UNAVAILABLE -> LocalPlayerEnvelope.errorEnvelope(
+                LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+                LocalPlayerEnvelope.TRANSPORT_UNIMPLEMENTED_MESSAGE,
             )
-            FAILED_NOT_CONNECTED -> mapOf(
-                "code" to "LOCAL_PLAYER_NOT_CONNECTED",
-                "message" to "Native local player is not connected.",
+            FAILED_NOT_CONNECTED -> LocalPlayerEnvelope.errorEnvelope(
+                LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
+                LocalPlayerEnvelope.NOT_CONNECTED_MESSAGE,
             )
         }
     }

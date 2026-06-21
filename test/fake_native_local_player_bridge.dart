@@ -68,6 +68,11 @@ final class FakeNativeLocalPlayerBridge implements NativeLocalPlayerBridge {
 }
 
 /// Builds a complete fake local-player snapshot for adapter and widget tests.
+///
+/// Defaults describe a connected, playing native local player with valid playback and
+/// queue bounds. Override [connectionStatus] and [error] together for failure-state
+/// tests; override player/media/playback fields to assert adapter mapping into
+/// `PlayerState` and `PlaybackSnapshot`.
 LocalPlayerSnapshot nativeSnapshot({
   LocalPlayerConnectionStatus connectionStatus =
       LocalPlayerConnectionStatus.connected,

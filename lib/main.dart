@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'playback/player_adapter.dart';
@@ -5,22 +7,49 @@ import 'playback/player_adapter_factory.dart';
 import 'player_screen.dart';
 
 /// Starts the Mass Mate Flutter application.
-void main() => runApp(MassMateApp());
+void main() => runApp(const MassMateApp());
 
 /// Root widget that configures the Mass Mate Material app and opens the player screen.
-class MassMateApp extends StatelessWidget {
+class MassMateApp extends StatefulWidget {
   /// Creates the root Mass Mate application widget.
-  MassMateApp({
+  const MassMateApp({
     super.key,
     PlayerAdapter? playerAdapter,
     PlayerBackendSelection? backend,
-  }) : playerAdapter = playerAdapter ??
-            createPlayerAdapter(
-              backend: backend ?? playerBackendFromEnvironment(),
-            );
+  })  : _providedPlayerAdapter = playerAdapter,
+        _backend = backend;
 
-  /// Playback adapter supplied to the player screen.
-  final PlayerAdapter playerAdapter;
+  final PlayerAdapter? _providedPlayerAdapter;
+  final PlayerBackendSelection? _backend;
+
+  @override
+  State<MassMateApp> createState() => _MassMateAppState();
+}
+
+class _MassMateAppState extends State<MassMateApp> {
+  late final PlayerAdapter _playerAdapter;
+  late final bool _ownsPlayerAdapter;
+
+  @override
+  void initState() {
+    super.initState();
+    final providedPlayerAdapter = widget._providedPlayerAdapter;
+    if (providedPlayerAdapter != null) {
+      _playerAdapter = providedPlayerAdapter;
+      _ownsPlayerAdapter = false;
+    } else {
+      _playerAdapter = createPlayerAdapter(
+        backend: widget._backend ?? playerBackendFromEnvironment(),
+      );
+      _ownsPlayerAdapter = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_ownsPlayerAdapter) unawaited(_playerAdapter.dispose());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +63,7 @@ class MassMateApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: PlayerScreen(playerAdapter: playerAdapter),
+      home: PlayerScreen(playerAdapter: _playerAdapter),
     );
   }
 }

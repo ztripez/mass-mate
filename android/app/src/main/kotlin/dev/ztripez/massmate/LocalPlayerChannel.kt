@@ -32,11 +32,10 @@ class LocalPlayerChannel private constructor(
 ) : MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler {
     private val appContext = context.applicationContext
-    private val pendingServiceActions = mutableListOf<(LocalPlayerService) -> Unit>()
+    private val pendingMethodActions = mutableListOf<PendingMethodAction>()
 
     private var service: LocalPlayerService? = null
     private var eventSink: EventChannel.EventSink? = null
-    private var pendingListenAction: ((LocalPlayerService) -> Unit)? = null
     private var bindStarted = false
     private var disposed = false
 
@@ -51,9 +50,9 @@ class LocalPlayerChannel private constructor(
                 }
             }
 
-            val actions = pendingServiceActions.toList()
-            pendingServiceActions.clear()
-            actions.forEach { action -> service?.let(action) }
+            val actions = pendingMethodActions.toList()
+            pendingMethodActions.clear()
+            actions.forEach { pending -> service?.let(pending::completeWith) }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -66,7 +65,7 @@ class LocalPlayerChannel private constructor(
         if (disposed) {
             result.success(
                 failedResult(
-                    LOCAL_PLAYER_UNAVAILABLE,
+                    LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
                     "Native local player channel has been disposed.",
                 ),
             )
@@ -92,24 +91,14 @@ class LocalPlayerChannel private constructor(
             return
         }
 
-        val listenAction: (LocalPlayerService) -> Unit = { localPlayer ->
-            if (eventSink === events) installSnapshotListener(localPlayer, events)
-        }
-        pendingListenAction = listenAction
-        pendingServiceActions.add(listenAction)
-
         val failure = ensureServiceBinding()
         if (failure != null) {
-            pendingServiceActions.remove(listenAction)
-            pendingListenAction = null
             if (eventSink === events) events.error(failure.code, failure.message, failure.details)
         }
     }
 
     override fun onCancel(arguments: Any?) {
         eventSink = null
-        pendingListenAction?.let(pendingServiceActions::remove)
-        pendingListenAction = null
         service?.setSnapshotListener(null)
     }
 
@@ -117,8 +106,17 @@ class LocalPlayerChannel private constructor(
     fun dispose() {
         disposed = true
         eventSink = null
-        pendingServiceActions.clear()
-        pendingListenAction = null
+        val pending = pendingMethodActions.toList()
+        pendingMethodActions.clear()
+        pending.forEach { action ->
+            action.completeFailure(
+                BindingFailure(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+                    "Native local player channel was disposed before service binding completed.",
+                    mapOf("reason" to "channel disposed"),
+                ),
+            )
+        }
         service?.setSnapshotListener(null)
         service = null
 
@@ -149,11 +147,12 @@ class LocalPlayerChannel private constructor(
         val pendingAction: (LocalPlayerService) -> Unit = { localPlayer ->
             result.success(action(localPlayer))
         }
-        pendingServiceActions.add(pendingAction)
+        val pendingMethodAction = PendingMethodAction(result, pendingAction)
+        pendingMethodActions.add(pendingMethodAction)
         val failure = ensureServiceBinding()
         if (failure != null) {
-            pendingServiceActions.remove(pendingAction)
-            result.success(failedResult(failure.code, failure.message, failure.details))
+            pendingMethodActions.remove(pendingMethodAction)
+            pendingMethodAction.completeFailure(failure)
         }
     }
 
@@ -176,19 +175,22 @@ class LocalPlayerChannel private constructor(
             if (bindStarted) {
                 null
             } else {
+                appContext.stopService(intent)
+                bindStarted = false
                 BindingFailure(
-                    LOCAL_PLAYER_UNAVAILABLE,
-                    "Native local player service could not be bound.",
+                    LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+                    LocalPlayerEnvelope.BIND_FAILED_MESSAGE,
                     mapOf("reason" to "bindService returned false"),
                 )
             }
         } catch (error: RuntimeException) {
             bindStarted = false
+            appContext.stopService(intent)
             BindingFailure(
-                LOCAL_PLAYER_UNAVAILABLE,
-                "Native local player service could not be bound.",
+                LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
+                LocalPlayerEnvelope.BIND_FAILED_MESSAGE,
                 mapOf(
-                    "exception" to error::class.java.name,
+                    "exception" to error.javaClass.name,
                     "message" to error.message,
                 ),
             )
@@ -199,23 +201,21 @@ class LocalPlayerChannel private constructor(
         code: String,
         message: String,
         details: Map<String, Any?>? = null,
-    ): Map<String, Any?> {
-        return mapOf(
-            "accepted" to false,
-            "error" to mapOf(
-                "code" to code,
-                "message" to message,
-                "details" to details,
-            ),
-        )
-    }
+    ): Map<String, Any?> = LocalPlayerEnvelope.failedResult(code, message, details)
 
     companion object {
         private const val METHOD_CHANNEL = "mass_mate/local_player"
         private const val EVENT_CHANNEL = "mass_mate/local_player/snapshots"
-        private const val LOCAL_PLAYER_UNAVAILABLE = "LOCAL_PLAYER_UNAVAILABLE"
 
-        /** Registers local-player method and event channels on [messenger]. */
+        /**
+         * Registers local-player method and event channels on [messenger].
+         *
+         * [context] is used to bind the route-independent [LocalPlayerService]. [messenger]
+         * receives the `mass_mate/local_player` method channel and
+         * `mass_mate/local_player/snapshots` event channel. The returned [LocalPlayerChannel]
+         * owns those handlers and the Android service binding; callers must invoke [dispose]
+         * when the Flutter engine detaches.
+         */
         fun register(context: Context, messenger: BinaryMessenger): LocalPlayerChannel {
             val methodChannel = MethodChannel(messenger, METHOD_CHANNEL)
             val eventChannel = EventChannel(messenger, EVENT_CHANNEL)
@@ -232,3 +232,22 @@ private data class BindingFailure(
     val message: String,
     val details: Map<String, Any?>?,
 )
+
+private data class PendingMethodAction(
+    val result: MethodChannel.Result,
+    val action: (LocalPlayerService) -> Unit,
+) {
+    fun completeWith(service: LocalPlayerService) {
+        result.success(action(service))
+    }
+
+    fun completeFailure(failure: BindingFailure) {
+        result.success(
+            LocalPlayerEnvelope.failedResult(
+                failure.code,
+                failure.message,
+                failure.details,
+            ),
+        )
+    }
+}

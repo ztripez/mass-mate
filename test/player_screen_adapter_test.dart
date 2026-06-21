@@ -9,6 +9,7 @@ import 'package:mass_mate/playback/playback_intent_projection.dart';
 import 'package:mass_mate/playback/playback_snapshot.dart';
 import 'package:mass_mate/playback/player_adapter.dart';
 import 'package:mass_mate/playback/player_state.dart';
+import 'package:mass_mate/main.dart';
 import 'package:mass_mate/player_screen.dart';
 
 const MethodChannel _platformChannel = SystemChannels.platform;
@@ -145,6 +146,17 @@ void main() {
     expect(find.text('Seek preview'), findsNothing);
     expect(find.text('24:27'), findsOneWidget);
   });
+
+  testWidgets('MassMateApp does not dispose caller-owned adapters',
+      (tester) async {
+    final adapter = _RecordingPlayerAdapter();
+
+    await tester.pumpWidget(MassMateApp(playerAdapter: adapter));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
+    expect(adapter.disposeCalls, 0);
+  });
 }
 
 Iterable<MethodCall> _hapticCalls(List<MethodCall> platformCalls, String type) {
@@ -189,6 +201,7 @@ final class _RecordingPlayerAdapter implements PlayerAdapter {
   final List<PlaybackIntent> intents = [];
   final StreamController<PlayerState> _states =
       StreamController<PlayerState>.broadcast(sync: true);
+  int disposeCalls = 0;
   PlayerState _state;
 
   @override
@@ -213,6 +226,7 @@ final class _RecordingPlayerAdapter implements PlayerAdapter {
 
   @override
   Future<void> dispose() async {
+    disposeCalls += 1;
     await _states.close();
   }
 }
