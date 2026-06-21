@@ -2,7 +2,14 @@ package dev.ztripez.massmate
 
 import java.net.URI
 
-/** Explicit Sendspin server settings supplied by the Flutter bridge. */
+/**
+ * Explicit Sendspin server settings supplied by the Flutter bridge.
+ *
+ * [serverUrl] is the required configured Music Assistant base URL or direct Sendspin WebSocket base
+ * URL. Accepted schemes are `http`, `https`, `ws`, and `wss`; HTTP schemes are converted to their
+ * WebSocket equivalents. [sendspinPath] is the endpoint path appended to the base path and must
+ * start with `/`; Flutter defaults it to `/sendspin` when `MASS_MATE_SENDSPIN_PATH` is absent.
+ */
 data class SendspinServerSettings(
     val serverUrl: String,
     val sendspinPath: String,
@@ -12,7 +19,14 @@ data class SendspinServerSettings(
 object SendspinEndpointBuilder {
     private const val DEFAULT_SENDSPIN_PATH = "/sendspin"
 
-    /** Parses bridge arguments and returns a validated WebSocket endpoint URI. */
+    /**
+     * Parses MethodChannel bridge [arguments] into a validated Sendspin WebSocket [URI].
+     *
+     * Recognized map keys are `serverUrl` (required nonblank string, from
+     * `MASS_MATE_SENDSPIN_SERVER_URL`) and `sendspinPath` (optional nonblank string, from
+     * `MASS_MATE_SENDSPIN_PATH`, default `/sendspin`). Invalid or missing values throw
+     * [SendspinConnectionException] with [LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID].
+     */
     fun fromBridgeArguments(arguments: Map<*, *>?): URI {
         val settings = fromMap(arguments)
         return buildEndpoint(settings)
@@ -35,7 +49,14 @@ object SendspinEndpointBuilder {
         return SendspinServerSettings(serverUrl.trim(), path.trim())
     }
 
-    /** Converts http(s)/ws(s) server settings into the concrete Sendspin WebSocket endpoint. */
+    /**
+     * Converts [settings] into the concrete Sendspin WebSocket endpoint.
+     *
+     * `http` becomes `ws`, `https` becomes `wss`, and `ws`/`wss` pass through. Base paths are
+     * preserved, trailing slashes are normalized, query/fragment components are dropped, and the
+     * configured Sendspin path is appended. Invalid schemes, missing hosts, malformed URIs, or paths
+     * that do not start with `/` throw [SendspinConnectionException].
+     */
     fun buildEndpoint(settings: SendspinServerSettings): URI {
         val base = try {
             URI(settings.serverUrl)
@@ -102,7 +123,7 @@ object SendspinEndpointBuilder {
     }
 }
 
-/** Typed Sendspin connection failure surfaced through local-player envelopes. */
+/** Typed Sendspin connection failure surfaced through local-player envelopes and snapshots. */
 class SendspinConnectionException(
     val code: String,
     override val message: String,

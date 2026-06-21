@@ -50,20 +50,23 @@ object LocalPlayerEnvelope {
             "details" to details,
         )
 
-    /** Creates the current local-player snapshot envelope consumed by Dart. */
-    fun snapshot(
-        connectionStatus: String,
-        connectionLabel: String,
-        mediaTitle: String,
-        mediaSubtitle: String,
-        error: Map<String, Any?>?,
-    ): Map<String, Any?> {
+    /**
+     * Converts the canonical native [SendspinConnectionSnapshot] into the Dart bridge envelope.
+     *
+     * This is the single serialization boundary for native local-player connection state. It keeps
+     * raw native status values, labels, media placeholders, and typed error payloads aligned with
+     * Dart's `LocalPlayerSnapshot` parser while preventing duplicate service-specific state models.
+     */
+    fun snapshot(snapshot: SendspinConnectionSnapshot): Map<String, Any?> {
+        val error = snapshot.error?.let { currentError ->
+            errorEnvelope(currentError.code, currentError.message, currentError.details)
+        }
         return mutableMapOf<String, Any?>(
-            "connectionStatus" to connectionStatus,
+            "connectionStatus" to snapshot.status.bridgeValue,
             "playerName" to "Mass Mate",
-            "connectionLabel" to connectionLabel,
-            "mediaTitle" to mediaTitle,
-            "mediaSubtitle" to mediaSubtitle,
+            "connectionLabel" to snapshot.connectionLabel,
+            "mediaTitle" to snapshot.mediaTitle,
+            "mediaSubtitle" to snapshot.mediaSubtitle,
             "positionMs" to 0,
             "trackLengthMs" to 1,
             "volume" to 0.0,

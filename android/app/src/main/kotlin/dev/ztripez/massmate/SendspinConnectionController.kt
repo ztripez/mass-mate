@@ -2,50 +2,172 @@ package dev.ztripez.massmate
 
 import java.net.URI
 
-/** Typed native Sendspin connection status reported to Flutter snapshots. */
+/** Native Sendspin connection status reported through local-player snapshots. */
 enum class SendspinConnectionStatus(val bridgeValue: String) {
+    /** No active Sendspin transport session is owned by the native local-player service. */
     DISCONNECTED("disconnected"),
+
+    /** A WebSocket transport is opening or waiting for a valid server hello. */
     CONNECTING("connecting"),
+
+    /** The client hello and server hello exchange passed version and required-role gates. */
     READY("ready"),
+
+    /** The transport, endpoint, protocol, or role gate failed visibly. */
     FAILED("failed"),
 }
 
-/** Snapshot of the native Sendspin connection state. */
+/**
+ * Single native representation of Sendspin connection state emitted to Flutter.
+ *
+ * [generation] increases for every controller-owned snapshot so the service can ignore stale
+ * main-thread posts after disconnect or reconnect. [status] is the typed lifecycle state.
+ * [connectionLabel], [mediaTitle], and [mediaSubtitle] are user-visible bridge fields. [error]
+ * is present only for [SendspinConnectionStatus.FAILED] snapshots and carries the failure code,
+ * message, and detail payload returned through the platform bridge.
+ */
 data class SendspinConnectionSnapshot(
+    val generation: Long,
     val status: SendspinConnectionStatus,
     val connectionLabel: String,
     val mediaTitle: String,
     val mediaSubtitle: String,
     val error: SendspinConnectionException? = null,
-)
+) {
+    companion object {
+        /** Creates the initial disconnected native connection state. */
+        fun disconnected(generation: Long = 0L): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
+            generation = generation,
+            status = SendspinConnectionStatus.DISCONNECTED,
+            connectionLabel = "Native local player disconnected",
+            mediaTitle = "Local player ready",
+            mediaSubtitle = "Not connected",
+        )
 
-/** Deterministic connection controller for Sendspin transport open, hello, goodbye, and reconnect. */
+        /** Creates a connecting snapshot for [endpoint]. */
+        fun connecting(generation: Long, endpoint: URI): SendspinConnectionSnapshot =
+            SendspinConnectionSnapshot(
+                generation = generation,
+                status = SendspinConnectionStatus.CONNECTING,
+                connectionLabel = "Connecting to Sendspin",
+                mediaTitle = "Connecting local player",
+                mediaSubtitle = endpoint.host,
+            )
+
+        /** Creates a ready snapshot after a validated handshake. */
+        fun ready(generation: Long): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
+            generation = generation,
+            status = SendspinConnectionStatus.READY,
+            connectionLabel = "Sendspin local player ready",
+            mediaTitle = "Local player ready",
+            mediaSubtitle = "Handshake complete",
+        )
+
+        /** Creates a failed snapshot carrying [error] details. */
+        fun failed(
+            generation: Long,
+            error: SendspinConnectionException,
+        ): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
+            generation = generation,
+            status = SendspinConnectionStatus.FAILED,
+            connectionLabel = "Sendspin local player failed",
+            mediaTitle = "Local player failed",
+            mediaSubtitle = error.message,
+            error = error,
+        )
+    }
+}
+
+/** Serial executor used to keep transport callbacks and lifecycle requests ordered. */
+fun interface SendspinConnectionQueue {
+    /** Enqueues [task] on the controller-owned serial thread. */
+    fun execute(task: () -> Unit)
+}
+
+/** Callback receiving the platform-channel result for an enqueued lifecycle request. */
+typealias SendspinLifecycleResult = (SendspinConnectionException?) -> Unit
+
+/**
+ * Deterministic Sendspin connection owner for transport open, hello, goodbye, and reconnect.
+ *
+ * All public methods and transport callbacks are serialized through [queue]. Production code passes
+ * a dedicated HandlerThread-backed queue so MethodChannel calls never block the Android main thread.
+ * Tests may use the default immediate queue for deterministic fake-transport assertions. A new
+ * [connect] replaces any active session: the previous session sends `client/goodbye` only after a
+ * client hello was sent, closes with [SendspinTransport.NORMAL_CLOSURE], and any later callbacks
+ * from that old session are ignored by session id. If replacement goodbye fails, the reconnect is
+ * not opened and a failed snapshot/result are emitted. Unsupported text after READY fails loudly
+ * until a future dispatcher owns non-handshake messages.
+ */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
     private val onSnapshot: (SendspinConnectionSnapshot) -> Unit,
+    private val queue: SendspinConnectionQueue = SendspinConnectionQueue { task -> task() },
 ) {
     private var sessionId = 0L
+    private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
 
-    /** Opens a fresh Sendspin session, replacing any existing session deterministically. */
-    @Synchronized
-    fun connect(endpoint: URI) {
-        closeActiveSession(deliberate = true)
-        val transport = transportFactory.create()
-        val nextSessionId = ++sessionId
-        activeTransport = transport
-        activeSession = ActiveSession(nextSessionId)
-        onSnapshot(connectingSnapshot(endpoint))
-        transport.open(endpoint, listenerFor(nextSessionId, transport))
+    /** Enqueues opening a fresh Sendspin session to [endpoint]. */
+    fun connect(endpoint: URI, onResult: SendspinLifecycleResult = {}) {
+        queue.execute { connectOnQueue(endpoint, onResult) }
     }
 
-    /** Deliberately disconnects the active session and sends goodbye when the handshake allows it. */
-    @Synchronized
-    fun disconnect(): SendspinConnectionException? {
+    /** Enqueues deliberate disconnect and goodbye when the current protocol state allows it. */
+    fun disconnect(onResult: SendspinLifecycleResult = {}) {
+        queue.execute { disconnectOnQueue(onResult) }
+    }
+
+    private fun connectOnQueue(endpoint: URI, onResult: SendspinLifecycleResult) {
+        val replacementError = closeActiveSession(deliberate = true)
+        if (replacementError != null) {
+            emitFailed(replacementError)
+            onResult(replacementError)
+            return
+        }
+
+        val transport = try {
+            transportFactory.create()
+        } catch (error: RuntimeException) {
+            val connectionError = SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                "Sendspin transport could not be created.",
+                mapOf("exception" to error.javaClass.name, "message" to error.message),
+            )
+            emitFailed(connectionError)
+            onResult(connectionError)
+            return
+        }
+        val nextSessionId = ++sessionId
+        activeTransport = transport
+        activeSession = ActiveSession(nextSessionId, endpoint)
+        emit(SendspinConnectionSnapshot.connecting(nextGeneration(), endpoint))
+
+        try {
+            transport.open(endpoint, listenerFor(nextSessionId, transport))
+            onResult(null)
+        } catch (error: RuntimeException) {
+            val connectionError = SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                "Sendspin transport could not be opened.",
+                mapOf("exception" to error.javaClass.name, "message" to error.message),
+            )
+            failCurrentSession(nextSessionId, connectionError)
+            onResult(connectionError)
+        }
+    }
+
+    private fun disconnectOnQueue(onResult: SendspinLifecycleResult) {
         val goodbyeError = closeActiveSession(deliberate = true)
-        onSnapshot(disconnectedSnapshot())
-        return goodbyeError
+        if (goodbyeError == null) {
+            emit(SendspinConnectionSnapshot.disconnected(nextGeneration()))
+            onResult(null)
+            return
+        }
+
+        emitFailed(goodbyeError)
+        onResult(goodbyeError)
     }
 
     private fun listenerFor(
@@ -53,14 +175,15 @@ class SendspinConnectionController(
         transport: SendspinTransport,
     ): SendspinTransport.Listener {
         return object : SendspinTransport.Listener {
-            override fun onOpen() = handleOpen(listenerSessionId, transport)
-            override fun onText(text: String) = handleText(listenerSessionId, text)
-            override fun onClosed(code: Int, reason: String) = handleClosed(listenerSessionId, code, reason)
-            override fun onFailure(error: Throwable) = handleFailure(listenerSessionId, error)
+            override fun onOpen() = queue.execute { handleOpen(listenerSessionId, transport) }
+            override fun onText(text: String) = queue.execute { handleText(listenerSessionId, text) }
+            override fun onClosed(code: Int, reason: String) =
+                queue.execute { handleClosed(listenerSessionId, code, reason) }
+
+            override fun onFailure(error: Throwable) = queue.execute { handleFailure(listenerSessionId, error) }
         }
     }
 
-    @Synchronized
     private fun handleOpen(listenerSessionId: Long, transport: SendspinTransport) {
         val session = activeSessionIfCurrent(listenerSessionId) ?: return
         try {
@@ -80,15 +203,25 @@ class SendspinConnectionController(
         }
     }
 
-    @Synchronized
     private fun handleText(listenerSessionId: Long, text: String) {
         val session = activeSessionIfCurrent(listenerSessionId) ?: return
-        if (session.ready) return
+        if (session.ready) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
+                    "Received unsupported Sendspin text frame after handshake readiness.",
+                    mapOf("sessionId" to listenerSessionId),
+                ),
+            )
+            return
+        }
+
         try {
             val serverHello = SendspinProtocolHandshake.parseServerHello(text)
             SendspinProtocolHandshake.validateServerHello(serverHello)
             session.ready = true
-            onSnapshot(readySnapshot())
+            emit(SendspinConnectionSnapshot.ready(nextGeneration()))
         } catch (error: SendspinConnectionException) {
             failCurrentSession(listenerSessionId, error)
         } catch (error: RuntimeException) {
@@ -103,7 +236,6 @@ class SendspinConnectionController(
         }
     }
 
-    @Synchronized
     private fun handleClosed(listenerSessionId: Long, code: Int, reason: String) {
         activeSessionIfCurrent(listenerSessionId) ?: return
         failCurrentSession(
@@ -116,7 +248,6 @@ class SendspinConnectionController(
         )
     }
 
-    @Synchronized
     private fun handleFailure(listenerSessionId: Long, error: Throwable) {
         activeSessionIfCurrent(listenerSessionId) ?: return
         failCurrentSession(
@@ -142,9 +273,9 @@ class SendspinConnectionController(
         activeSession = null
         sessionId += 1
 
-        var goodbyeError: SendspinConnectionException? = null
+        var closeError: SendspinConnectionException? = null
         if (deliberate && transport != null && session?.clientHelloSent == true) {
-            goodbyeError = try {
+            closeError = try {
                 transport.sendText(SendspinProtocolHandshake.clientGoodbye())
                 null
             } catch (error: SendspinConnectionException) {
@@ -157,48 +288,55 @@ class SendspinConnectionController(
                 )
             }
         }
-        transport?.close(SendspinTransport.NORMAL_CLOSURE, "Mass Mate disconnect")
-        return goodbyeError
+
+        val transportCloseError = try {
+            transport?.close(SendspinTransport.NORMAL_CLOSURE, SendspinTransport.NORMAL_CLOSURE_REASON)
+            null
+        } catch (error: RuntimeException) {
+            SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                "Failed to close Sendspin transport.",
+                mapOf("message" to error.message),
+            )
+        }
+
+        return closeError ?: transportCloseError
     }
 
     private fun failCurrentSession(listenerSessionId: Long, error: SendspinConnectionException) {
         activeSessionIfCurrent(listenerSessionId) ?: return
-        closeActiveSession(deliberate = false)
-        onSnapshot(failedSnapshot(error))
+        val closeError = closeActiveSession(deliberate = false)
+        emitFailed(error.withCloseError(closeError))
     }
 
-    private fun connectingSnapshot(endpoint: URI): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
-        status = SendspinConnectionStatus.CONNECTING,
-        connectionLabel = "Connecting to Sendspin",
-        mediaTitle = "Connecting local player",
-        mediaSubtitle = endpoint.host,
-    )
+    private fun SendspinConnectionException.withCloseError(
+        closeError: SendspinConnectionException?,
+    ): SendspinConnectionException {
+        if (closeError == null) return this
+        val combinedDetails = (details.orEmpty() + mapOf(
+            "closeErrorCode" to closeError.code,
+            "closeErrorMessage" to closeError.message,
+            "closeErrorDetails" to closeError.details,
+        ))
+        return SendspinConnectionException(code, message, combinedDetails)
+    }
 
-    private fun readySnapshot(): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
-        status = SendspinConnectionStatus.READY,
-        connectionLabel = "Sendspin local player ready",
-        mediaTitle = "Local player ready",
-        mediaSubtitle = "Handshake complete",
-    )
+    private fun emitFailed(error: SendspinConnectionException) {
+        emit(SendspinConnectionSnapshot.failed(nextGeneration(), error))
+    }
 
-    private fun disconnectedSnapshot(): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
-        status = SendspinConnectionStatus.DISCONNECTED,
-        connectionLabel = "Native local player disconnected",
-        mediaTitle = "Local player ready",
-        mediaSubtitle = "Not connected",
-    )
+    private fun emit(snapshot: SendspinConnectionSnapshot) {
+        onSnapshot(snapshot)
+    }
 
-    private fun failedSnapshot(error: SendspinConnectionException): SendspinConnectionSnapshot =
-        SendspinConnectionSnapshot(
-            status = SendspinConnectionStatus.FAILED,
-            connectionLabel = "Sendspin local player failed",
-            mediaTitle = "Local player failed",
-            mediaSubtitle = error.message,
-            error = error,
-        )
+    private fun nextGeneration(): Long {
+        snapshotGeneration += 1
+        return snapshotGeneration
+    }
 
     private data class ActiveSession(
         val id: Long,
+        val endpoint: URI,
         var clientHelloSent: Boolean = false,
         var ready: Boolean = false,
     )

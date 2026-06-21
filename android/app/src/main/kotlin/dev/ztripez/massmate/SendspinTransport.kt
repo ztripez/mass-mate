@@ -7,36 +7,57 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
-/** Small text transport seam for the first Sendspin connection path. */
+/**
+ * Text-only transport seam for the Sendspin hello/goodbye connection path.
+ *
+ * [open] starts an asynchronous connection to a validated endpoint and reports exactly one listener
+ * stream for that transport instance. [sendText] sends a UTF-8 text protocol frame or throws
+ * [SendspinConnectionException] / [RuntimeException] when the frame cannot be accepted by the
+ * transport. [close] asks the transport to close; callers still surface close/send failures instead
+ * of falling back to a demo backend. Binary audio frames and stream lifecycle are intentionally out
+ * of scope for this interface.
+ */
 interface SendspinTransport {
-    /** Opens the transport and reports lifecycle/text events to [listener]. */
+    /** Opens the transport to [endpoint] and reports lifecycle, text, close, and failure callbacks. */
     fun open(endpoint: URI, listener: Listener)
 
-    /** Sends a text protocol frame. */
+    /** Sends a text protocol frame; failure to enqueue the frame must throw visibly. */
     fun sendText(text: String)
 
-    /** Closes the transport. */
+    /** Closes the transport with a WebSocket close [code] and optional [reason]. */
     fun close(code: Int = NORMAL_CLOSURE, reason: String? = null)
 
-    /** Transport event callbacks. */
+    /** Callback stream emitted by one transport instance and serialized by the controller owner. */
     interface Listener {
+        /** The underlying WebSocket opened and can accept text frames. */
         fun onOpen()
+
+        /** A text frame arrived; unsupported post-handshake text fails until dispatch exists. */
         fun onText(text: String)
+
+        /** The WebSocket closed without an explicit service disconnect. */
         fun onClosed(code: Int, reason: String)
+
+        /** The WebSocket transport failed before an orderly close. */
         fun onFailure(error: Throwable)
     }
 
     companion object {
+        /** Normal WebSocket close code used for deliberate Mass Mate disconnect/reconnect. */
         const val NORMAL_CLOSURE = 1000
+
+        /** Stable close reason used by tests and visible transport diagnostics. */
+        const val NORMAL_CLOSURE_REASON = "Mass Mate disconnect"
     }
 }
 
-/** Factory for real or fake Sendspin transports. */
+/** Factory for creating one real or fake [SendspinTransport] per connection attempt. */
 fun interface SendspinTransportFactory {
+    /** Creates a fresh unopened transport instance. */
     fun create(): SendspinTransport
 }
 
-/** WebSocket transport implementation backed by OkHttp. */
+/** OkHttp-backed WebSocket implementation of [SendspinTransport]. */
 class OkHttpWebSocketSendspinTransport(
     private val client: OkHttpClient,
 ) : SendspinTransport {
@@ -85,7 +106,7 @@ class OkHttpWebSocketSendspinTransport(
     }
 }
 
-/** Creates the initial real Sendspin WebSocket transport. */
+/** Creates OkHttp WebSocket transports for configured Sendspin endpoints. */
 class OkHttpWebSocketSendspinTransportFactory : SendspinTransportFactory {
     private val client = OkHttpClient()
 
