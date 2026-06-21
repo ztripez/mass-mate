@@ -79,7 +79,7 @@ void main() {
         greaterThanOrEqualTo(64));
     expect(
         _iconButtonSize(tester, Icons.pause).width, greaterThanOrEqualTo(64));
-    expect(_textButtonSize(tester, 'MENU').height, greaterThanOrEqualTo(64));
+    expect(_textButtonSize(tester, 'MODE').height, greaterThanOrEqualTo(64));
     expect(tester.getSize(find.byType(FilledButton)).width,
         greaterThanOrEqualTo(104));
   });
@@ -92,7 +92,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Seek preview'), findsOneWidget);
-    expect(find.text('Release or center to commit • MENU cancels'),
+    expect(find.text('Release or center to commit • MODE cancels'),
         findsOneWidget);
     expect(find.text('The Long Way Home • Audiobook'), findsNothing);
     expect(find.textContaining('Volume 62%'), findsNothing);
@@ -147,7 +147,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.text('MENU'));
+      await tester.tap(find.text('MODE'));
       await tester.pump();
 
       _expectSemanticsNode(
@@ -166,7 +166,7 @@ void main() {
         hint: 'Raises the local demo volume.',
       );
 
-      await tester.tap(find.text('MENU'));
+      await tester.tap(find.text('MODE'));
       await tester.pump();
 
       _expectSemanticsNode(

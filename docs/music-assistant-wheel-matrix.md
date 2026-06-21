@@ -54,17 +54,17 @@ Reference links:
 | --- | --- | --- | --- | --- | --- |
 | Ring | Adjust the focused scalar or list | Move seek preview target | Adjust volume | Move queue cursor | Move list cursor |
 | Center | Confirm/select, never surprise-mutate | Commit active preview; target behavior may use no-preview center for precision/options | Toggle mute | Play selected queue item | Open/select focused item |
-| MENU/top | Back first, mode-cycle second | Cancel preview and cycle mode when on Now Playing | Cycle mode when on Now Playing | Cycle mode when on Now Playing | Back/up |
+| MODE/top | Back first, mode-cycle second | Cancel preview and cycle mode when on Now Playing | Cycle mode when on Now Playing | Cycle mode when on Now Playing | Back/up |
 | Left/right | Transport unless local mode has stronger meaning | Target behavior: chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
 | Bottom | Always play/pause committed playback | Play/pause without committing preview | Play/pause | Play/pause current playback | Play/pause current playback |
 | Center hold | Open context actions | Seek options | Volume/output options | Queue item actions | Item/player actions |
-| MENU hold | Open global surface switcher | Now Playing / Browse / Queue / Output / Settings | Same | Same | Same |
+| MODE hold | Open global surface switcher | Now Playing / Browse / Queue / Output / Settings | Same | Same | Same |
 | Left/right hold | Continuous transport or page repeat | Rewind/fast-forward preview | Previous/next repeat only if deliberate | Page repeat | Page repeat |
 | Bottom hold | Stop | Stop | Stop | Stop | Stop |
 
 ## Functionality matrix
 
-| Music Assistant function | Surface / mode | Ring rotation | Center | MENU / top | Left / right | Bottom | Long press / secondary | MA integration target | Priority |
+| Music Assistant function | Surface / mode | Ring rotation | Center | MODE / top | Left / right | Bottom | Long press / secondary | MA integration target | Priority |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Play / pause | Global | No-op | Mode-specific | Back/cycle | Mode-specific | Toggle play/pause | Hold bottom = stop | `player_queues/play_pause` or `players/cmd/play_pause` | P0 |
 | Stop | Global | No-op | - | - | - | - | Hold bottom | `player_queues/stop` or `players/cmd/stop` | P1 |
@@ -89,7 +89,7 @@ Reference links:
 | Search library | Search surface | Scroll results | Open selected result | Back | Page results | Play/pause current item | OS keyboard for query input; wheel navigates results | `music/search` or generated search command from `/api-docs` | P2 |
 | Play album / playlist / radio station | Browse surface | Scroll items | Open item by default | Back | Page | Play selected collection only when explicitly focused for play | Center hold = play now / add next / add later | Queue load/play-media command from `/api-docs` | P1 |
 | Add item to queue / play next | Item action sheet | Scroll actions | Confirm action | Back | - | Play/pause | Center hold on browsed item | Queue enqueue/play-next command from `/api-docs` | P1 |
-| Select active player/output | Output surface | Scroll players | Select active target | Back/cycle | Page players | Play/pause active target | MENU hold opens output selector globally | `players/*`, active queue lookup, selected player persistence | P0 |
+| Select active player/output | Output surface | Scroll players | Select active target | Back/cycle | Page players | Play/pause active target | MODE hold opens output selector globally | `players/*`, active queue lookup, selected player persistence | P0 |
 | Transfer playback between players | Output surface | Scroll destination | Transfer to selected | Back | Page players | Play/pause current target | Center hold on player = transfer actions | Transfer queue/action command from `/api-docs` | P1 |
 | Join / unjoin group | Output actions | Scroll action list | Confirm | Back | - | Play/pause | Center hold on player/group | Player group/member commands from `/api-docs` | P2 |
 | Announcements / TTS | Notification/status only | - | - | Dismiss/back | - | Play/pause active playback | - | Home Assistant / MA announcement APIs, not wheel-primary | P3 |
@@ -133,7 +133,7 @@ Expose intent-level operations instead:
 - Prefer player commands for output/device actions such as volume, mute, group volume, power, and transfer.
 - Keep seek preview local. Do not emit remote seek commands for every wheel tick.
 - Bottom play/pause must never commit an active seek preview.
-- MENU/back must cancel active seek preview without committing it.
+- MODE/back must cancel active seek preview without committing it.
 - Every destructive or high-impact action from a context menu needs explicit center-confirm semantics.
 - Browse/search may use touch text input for query entry. The wheel owns result navigation, selection, and item actions.
 - Generated `/api-docs` from the user's actual Music Assistant server is the source of truth for final command names and schemas.

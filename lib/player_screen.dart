@@ -270,8 +270,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           semanticHint: _mode.description,
           centerSemanticLabel: _centerLabel(hasActiveSeekPreview),
           centerSemanticHint: _centerHint(hasActiveSeekPreview),
-          menuSemanticLabel: 'Change wheel mode',
-          menuSemanticHint:
+          modeSemanticLabel: 'Change wheel mode',
+          modeSemanticHint:
               'Cancels active seek preview and moves to the next mode.',
           backSemanticLabel: _backLabel(),
           backSemanticHint: _backHint(),
@@ -526,7 +526,7 @@ class _SeekPreviewHint extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Release or center to commit • MENU cancels',
+              'Release or center to commit • MODE cancels',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colorScheme.onPrimaryContainer,
                   ),

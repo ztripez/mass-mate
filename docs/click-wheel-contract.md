@@ -4,7 +4,7 @@ This contract defines the intended Mass Mate click-wheel behavior before Music A
 
 ## Scope
 
-The contract covers the Android-first touch click wheel, its current seek, volume, and queue modes, and the physical layout implied by the prototype: rotary ring, center button, MENU/top button, left/right transport buttons, and bottom play/pause button.
+The contract covers the Android-first touch click wheel, its current seek, volume, and queue modes, and the physical layout implied by the prototype: rotary ring, center button, MODE/top button, left/right transport buttons, and bottom play/pause button.
 
 This is a product and interaction contract only. It does not add backend playback control, Music Assistant authentication, device discovery, output selection, or queue mutation beyond local UI intent.
 
@@ -20,7 +20,7 @@ This is a product and interaction contract only. It does not add backend playbac
 
 ### Mode Table
 
-| Mode | Wheel rotation | Center button | Left/right | MENU |
+| Mode | Wheel rotation | Center button | Left/right | MODE |
 | --- | --- | --- | --- | --- |
 | Seek | Move preview seek target | Commit active preview; if no preview is active, cycle mode in the current prototype | Apply the same adaptive preview movement as wheel input in the current prototype | Cycle mode |
 | Volume | Fine volume adjustment | Cycle mode in the current prototype; future integration may use this for mute/unmute | Apply the same small volume movement as wheel input in the current prototype | Cycle mode |
@@ -35,13 +35,13 @@ This is a product and interaction contract only. It does not add backend playbac
 - Center press commits the active preview target and applies the seek.
 - If center is pressed with no active preview in the current prototype, it cycles to the next wheel mode.
 - Left/right seek actions update the preview target with the same adaptive model as wheel input and follow the active seek commit policy in the current prototype.
-- MENU or direct mode selection cancels any active seek preview without committing it.
+- MODE or direct mode selection cancels any active seek preview without committing it.
 - Play/pause and track transport actions must not silently commit a seek preview.
 - Preview targets clamp to the current playable range.
 
 ### Buttons
 
-- MENU/top button cycles modes in this order: Seek, Volume, Queue, then Seek again.
+- MODE/top button cycles modes in this order: Seek, Volume, Queue, then Seek again.
 - Left/right buttons are mode-dependent transport controls, as defined in the mode table.
 - Bottom button toggles play/pause for the currently committed playback item.
 - Center button is mode-dependent selection or confirmation, as defined in the mode table.
@@ -66,7 +66,7 @@ This is a product and interaction contract only. It does not add backend playbac
 
 - The wheel exposes a mode-specific label, such as `Seek click wheel`, `Volume click wheel`, or `Queue click wheel`.
 - The wheel hint explains what rotation changes in the active mode.
-- MENU is labeled as changing the wheel mode.
+- MODE is labeled as changing the wheel mode.
 - Center uses mode-specific labels and hints: commit active preview or cycle mode with no preview in Seek, and cycle mode in the current Volume and Queue prototype modes.
 - Left/right labels and hints change with the active mode.
 - Bottom play/pause label reflects the current committed playback state.

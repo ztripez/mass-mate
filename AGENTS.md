@@ -43,7 +43,7 @@ Treat the contract docs as product constraints. If implementation behavior confl
 - When Music Assistant work is explicitly requested, use `docs/music-assistant-wheel-matrix.md` and `docs/implementation-plan.md` to keep API wiring behind intent-level adapters instead of leaking MA command names into UI widgets.
 - Queue/playback preview is local-first: do not emit remote seek commands for every wheel tick; remote seek belongs on explicit commit.
 - Bottom play/pause and transport actions must never silently commit an active seek preview.
-- MENU/back must cancel active seek preview without committing it.
+- MODE/back must cancel active seek preview without committing it.
 - Target Android touch first for validating click-wheel feel; keep Linux as a secondary desktop smoke target.
 - Follow `analysis_options.yaml`: `package:flutter_lints/flutter.yaml` plus `prefer_const_constructors`.
 - `pubspec.lock` is not committed and `*.lock` is ignored; `pubspec.yaml` is the dependency source of truth here.

@@ -31,8 +31,8 @@ class ClickWheel extends StatefulWidget {
     this.dimension = 300,
     this.centerSemanticLabel = 'Center button',
     this.centerSemanticHint,
-    this.menuSemanticLabel = 'MENU',
-    this.menuSemanticHint,
+    this.modeSemanticLabel = 'MODE',
+    this.modeSemanticHint,
     this.backSemanticLabel = 'Back',
     this.backSemanticHint,
     this.forwardSemanticLabel = 'Next',
@@ -68,7 +68,7 @@ class ClickWheel extends StatefulWidget {
   /// Called when the center select button is pressed.
   final VoidCallback onCenterPressed;
 
-  /// Called when the menu button requests the next wheel interaction mode.
+  /// Called when the mode button requests the next wheel interaction mode.
   final VoidCallback onModePressed;
 
   /// Called when the backward skip button is pressed.
@@ -89,11 +89,11 @@ class ClickWheel extends StatefulWidget {
   /// Accessibility hint for the center button.
   final String? centerSemanticHint;
 
-  /// Accessibility label for the top MENU button.
-  final String menuSemanticLabel;
+  /// Accessibility label for the top MODE button.
+  final String modeSemanticLabel;
 
-  /// Accessibility hint for the top MENU button.
-  final String? menuSemanticHint;
+  /// Accessibility hint for the top MODE button.
+  final String? modeSemanticHint;
 
   /// Accessibility label for the left/back button.
   final String backSemanticLabel;
@@ -256,9 +256,9 @@ class _ClickWheelState extends State<ClickWheel> {
               Positioned(
                 top: geometry.verticalInset,
                 child: _WheelTextButton(
-                  label: 'MENU',
-                  semanticLabel: widget.menuSemanticLabel,
-                  semanticHint: widget.menuSemanticHint,
+                  label: 'MODE',
+                  semanticLabel: widget.modeSemanticLabel,
+                  semanticHint: widget.modeSemanticHint,
                   minimumSize: Size(geometry.textButtonWidth, geometry.hitSize),
                   onTap: widget.onModePressed,
                 ),
