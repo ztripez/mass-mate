@@ -10,4 +10,5 @@ This file is intentionally small and points to the GitHub tracker for the curren
 
 - `docs/click-wheel-contract.md`
 - `docs/music-assistant-wheel-matrix.md`
+- `docs/wheel-ux-strictness.md`
 - `docs/implementation-plan.md`
