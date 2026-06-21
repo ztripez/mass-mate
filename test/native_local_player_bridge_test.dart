@@ -181,6 +181,51 @@ void main() {
     expect(result.error?.details, {'source': 'test'});
   });
 
+  test('MethodChannelNativeLocalPlayerBridge maps snapshot platform errors',
+      () async {
+    const methodChannel = MethodChannel('test/local_player_stream_error');
+    const eventChannel = EventChannel(
+      'test/local_player_stream_error/snapshots',
+    );
+    final bridge = MethodChannelNativeLocalPlayerBridge(
+      methodChannel: methodChannel,
+      eventChannel: eventChannel,
+    );
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockStreamHandler(
+      eventChannel,
+      MockStreamHandler.inline(
+        onListen: (arguments, events) {
+          events.error(
+            code: 'LOCAL_PLAYER_UNAVAILABLE',
+            message: 'Native local player service disconnected unexpectedly.',
+            details: {'source': 'test'},
+          );
+        },
+      ),
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockStreamHandler(eventChannel, null),
+    );
+
+    await expectLater(
+      bridge.snapshots,
+      emitsError(
+        isA<LocalPlayerBridgeException>()
+            .having((error) => error.kind, 'kind',
+                LocalPlayerErrorKind.unavailable)
+            .having(
+              (error) => error.message,
+              'message',
+              'Native local player service disconnected unexpectedly.',
+            )
+            .having((error) => error.details, 'details', {'source': 'test'}),
+      ),
+    );
+  });
+
   test('player adapter factory can select the native local-player backend', () {
     final bridge = FakeNativeLocalPlayerBridge();
     addTearDown(bridge.dispose);

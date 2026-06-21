@@ -36,7 +36,7 @@ class LocalPlayerChannel private constructor(
 
     private var service: LocalPlayerService? = null
     private var eventSink: EventChannel.EventSink? = null
-    private var bindStarted = false
+    private var bindingRegistered = false
     private var disposed = false
 
     private val connection = object : ServiceConnection {
@@ -57,7 +57,6 @@ class LocalPlayerChannel private constructor(
 
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
-            bindStarted = false
 
             val failure = BindingFailure(
                 LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
@@ -68,6 +67,12 @@ class LocalPlayerChannel private constructor(
             pendingMethodActions.clear()
             pending.forEach { action -> action.completeFailure(failure) }
             eventSink?.error(failure.code, failure.message, failure.details)
+
+            if (bindingRegistered) {
+                appContext.unbindService(this)
+                bindingRegistered = false
+            }
+            appContext.stopService(Intent(appContext, LocalPlayerService::class.java))
         }
     }
 
@@ -130,9 +135,9 @@ class LocalPlayerChannel private constructor(
         service?.setSnapshotListener(null)
         service = null
 
-        if (bindStarted) {
+        if (bindingRegistered) {
             appContext.unbindService(connection)
-            bindStarted = false
+            bindingRegistered = false
         }
 
         appContext.stopService(Intent(appContext, LocalPlayerService::class.java))
@@ -169,17 +174,17 @@ class LocalPlayerChannel private constructor(
     }
 
     private fun ensureServiceBinding(): BindingFailure? {
-        if (bindStarted) return null
+        if (bindingRegistered) return null
 
         val intent = Intent(appContext, LocalPlayerService::class.java)
         return try {
             appContext.startService(intent)
-            bindStarted = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            if (bindStarted) {
+            bindingRegistered = appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            if (bindingRegistered) {
                 null
             } else {
                 appContext.stopService(intent)
-                bindStarted = false
+                bindingRegistered = false
                 BindingFailure(
                     LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,
                     LocalPlayerEnvelope.BIND_FAILED_MESSAGE,
@@ -187,7 +192,7 @@ class LocalPlayerChannel private constructor(
                 )
             }
         } catch (error: RuntimeException) {
-            bindStarted = false
+            bindingRegistered = false
             appContext.stopService(intent)
             BindingFailure(
                 LocalPlayerEnvelope.LOCAL_PLAYER_UNAVAILABLE,

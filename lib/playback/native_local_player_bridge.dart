@@ -53,8 +53,24 @@ final class MethodChannelNativeLocalPlayerBridge
 
   @override
   Stream<LocalPlayerSnapshot> get snapshots {
-    return _snapshots ??= _eventChannel.receiveBroadcastStream().map(
-          LocalPlayerSnapshot.fromMap,
+    return _snapshots ??= _eventChannel.receiveBroadcastStream().transform(
+          StreamTransformer<Object?, LocalPlayerSnapshot>.fromHandlers(
+            handleData: (value, sink) {
+              try {
+                sink.add(LocalPlayerSnapshot.fromMap(value));
+              } on Object catch (error, stackTrace) {
+                sink.addError(error, stackTrace);
+              }
+            },
+            handleError: (error, stackTrace, sink) {
+              if (error is PlatformException) {
+                sink.addError(_exceptionFromPlatform(error), stackTrace);
+                return;
+              }
+
+              sink.addError(error, stackTrace);
+            },
+          ),
         );
   }
 
