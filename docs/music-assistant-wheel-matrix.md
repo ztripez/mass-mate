@@ -155,11 +155,15 @@ Expose intent-level operations instead:
 - Browse/search may use touch text input for query entry. The wheel owns result navigation, selection, and item actions.
 - Generated `/api-docs` from the user's actual Music Assistant server is the source of truth for final command names and schemas.
 
-## First implementation slice
+## Implementation order
+
+`docs/implementation-plan.md` is the source of truth for implementation order. The current first slice is the Sendspin local-player path defined in `docs/sendspin-player-architecture.md`; it must land before browse/library or direct Music Assistant API work.
+
+After the Sendspin playback path is stable, the Music Assistant follow-up slice should:
 
 1. Keep `ClickWheel` gesture-only.
-2. Extend `PlaybackIntent` or equivalent with transport, seek preview/commit, volume, queue cursor, output target, and context-action intents.
-3. Implement an MA adapter seam with command buckets above.
+2. Extend `PlaybackIntent` or equivalent with any remaining P0/P1 transport, queue cursor, output target, and context-action intents that are not already covered by the Sendspin path.
+3. Implement MA adapter behavior with the command buckets above.
 4. Wire P0 interactions against a fake adapter and tests first.
 5. Wire real MA commands for play/pause, seek commit, previous/next, volume, mute, queue list, and selected player/output.
 6. Add P1 overlays after the P0 path is stable.

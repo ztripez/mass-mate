@@ -13,6 +13,16 @@ Authoritative product constraints remain in these documents:
 - `docs/wheel-ux-strictness.md` for deciding which flows require wheel-first ergonomics.
 - `docs/music-assistant-wheel-matrix.md` for intent-level playback buckets and Music Assistant feature priority.
 
+## Terms And Assumptions
+
+- Sendspin is the local-player protocol Mass Mate will use to receive control messages, timing data, metadata, and scheduled audio streams from a configured server.
+- A local-player backend is the selected playback backend that runs on the Android device and renders audio locally instead of controlling a separate Music Assistant output.
+- Role negotiation is the `client/hello` and `server/hello` exchange that decides which local-player capabilities are active for the session.
+- Command envelopes are Mass Mate bridge messages derived from `PlaybackIntent` values; they are not raw Sendspin protocol messages and are not visible to Flutter widgets.
+- Text protocol messages are structured Sendspin control/state messages carried by the WebSocket transport.
+- Binary audio frames are WebSocket binary payloads owned by the stream/buffer/audio path and scheduled against synchronized time.
+- A configured endpoint is the explicit Sendspin server URL supplied by setup/configuration; this architecture does not add discovery, auth, proxy, or provider administration.
+
 ## Non-Goals
 
 - No browse, search, library, provider, or queue-management implementation in this slice.
@@ -27,13 +37,14 @@ Authoritative product constraints remain in these documents:
 | Layer | Owns | Must not own |
 | --- | --- | --- |
 | Flutter UI and wheel resolver | Touch input, `ClickWheel` events, `WheelMode`, local seek preview state, explicit `PlaybackIntent` creation, visual/accessibility feedback from snapshots. | Sendspin connection lifecycle, raw protocol command names, clock sync, stream buffers, audio output, or native service lifetime. |
-| Dart `PlayerAdapter` and native bridge | Adapter selection, intent-level command bridge, snapshot subscription, conversion between native snapshot envelopes and `PlayerState` / `PlaybackSnapshot`, visible error propagation. | Protocol parsing, audio scheduling, codec decisions, hidden fallback to demo state, or route-scoped connection state. |
+| Dart `PlayerAdapter` and native bridge | Adapter selection, intent-level command bridge, snapshot subscription, the sole conversion from native snapshot envelopes into `PlayerState` / `PlaybackSnapshot`, visible error propagation. | Protocol parsing, audio scheduling, codec decisions, hidden fallback to demo state, native state aggregation, or route-scoped connection state. |
 | Android local-player service | Service lifecycle, configured endpoint connection, Sendspin handshake, reconnect/disconnect policy, command dispatch, state aggregation, error state, snapshot reporting to Dart. | Flutter route decisions, wheel gesture interpretation, browse/library commands, or UI-specific presentation. |
 | Sendspin protocol layer | Text message models, binary frame demultiplexing, dispatcher, supported roles, supported commands, version/capability validation. | Android audio APIs, Flutter platform channel details, or UI state projection. |
 | Timing and clock sync | Monotonic local clock, server-to-local time mapping, sync quality, outlier/stale-sync handling, timing diagnostics. | Seek preview policy, UI progress painting outside reported snapshots, or protocol transport ownership. |
 | Stream and buffer layer | `stream/start`, `stream/clear`, `stream/end`, binary audio frame ordering, buffer depth, dropped-frame counters, stream-owned state. | Codec capability advertisement, final audio sink writes, or Flutter state models. |
 | Audio sink and codecs | Supported codec probing, decode/passthrough, Android `AudioTrack` stream-mode output, write scheduling, underrun/write failure reporting. | Wheel commands, Dart snapshots, or protocol role negotiation beyond reporting supported codecs. |
-| Snapshot reporting | Native player state aggregation, metadata merge, playback position derivation, connection/sync/buffer/error fields, Dart mapping to current UI models. | Local demo projection after Sendspin errors, browse results, or unverified protocol schemas. |
+
+There is one native player-state aggregation owner: the Android local-player service. There is one Dart model conversion owner: the Dart `PlayerAdapter` / native bridge mapper that converts native snapshot envelopes into `PlayerState` and `PlaybackSnapshot`.
 
 The current Android host only registers the `mass_mate/haptics` channel in `MainActivity.kt`. Sendspin work should add a separate native local-player service boundary instead of putting long-lived connection or audio code in `MainActivity`.
 
@@ -148,6 +159,21 @@ Unsupported required capabilities fail visibly with a typed connection/player er
 | #32 Sendspin controller commands from wheel intents | Maps existing intent-level playback operations to supported Sendspin commands while preserving local seek preview. | #24, #25, #26, #27 |
 | #33 Sendspin metadata and playback snapshot bridge | Maps native metadata, timing, buffer, playback, and error state into Dart `PlayerState` / `PlaybackSnapshot`. | #24, #25, #27, #28, #29 |
 | #34 Sendspin validation harness and real-server smoke test | Adds fake transport/audio tests, clock tests, protocol validation, debug logging, and real-server smoke checklist. | #24 plus the implementation issues under test |
+
+## Child Issue Acceptance Guidance
+
+| Issue | Accepted when | Must not |
+| --- | --- | --- |
+| #25 | Android exposes a route-independent local-player service boundary, Dart has a Sendspin-backed `PlayerAdapter`, command envelopes and snapshot stream are fakeable in tests, and unavailable/failing backend states are visible. | Put long-lived Sendspin work in `MainActivity`, leak protocol names into widgets, or silently select the demo adapter after backend failure. |
+| #26 | WebSocket transport, hello/goodbye, required-role activation, connection states, reconnect policy, and fake transport tests are implemented with visible failures for rejected roles or endpoint errors. | Treat the backend as ready before version/role gates pass or choose another transport silently. |
+| #27 | Typed protocol messages and dispatcher route server events to native owners with parser/dispatcher tests for valid, unknown, malformed, and unsupported messages. | Let Flutter parse protocol messages or turn unknown required protocol data into success. |
+| #28 | Clock sync maps server time to Android monotonic time, reports sync quality/stale/outlier states, and has deterministic unit tests for drift and stale sync. | Schedule audio from wall-clock time or hide bad sync behind optimistic ready state. |
+| #29 | Stream start/clear/end and binary frame ordering feed a bounded buffer with tests for late, duplicate, missing, clear, and end conditions. | Let binary frames bypass stream ownership or erase errors by resetting to demo playback. |
+| #30 | Negotiated PCM reaches Android `AudioTrack` stream-mode output through a fakeable audio sink with tests for underrun, write failure, clear, stop, and fatal audio errors. | Add FLAC/Opus before PCM is stable or report audible playback before audio writes are accepted. |
+| #31 | FLAC and Opus are advertised only when supported, decoded or passed through according to negotiated capability, and covered by codec selection/failure tests. | Guess codec support, silently fall back without negotiation, or make codecs a prerequisite for PCM. |
+| #32 | Existing `PlaybackIntent` operations map to supported Sendspin controller commands with tests proving seek preview stays local and one committed seek sends one backend command. | Add raw Sendspin command names to Flutter widgets or send preview ticks over the bridge. |
+| #33 | Native metadata, position, duration, queue bounds, volume, play state, timing, buffer, connection, and error envelopes map into existing Dart state with bridge tests. | Create a parallel Flutter player-state model or clear known metadata unless the protocol explicitly clears it. |
+| #34 | Fake transport, fake audio, clock, protocol, command, and bridge tests run in automation, and a real-server smoke checklist covers connection, roles, PCM audio, commands, snapshots, and visible failures. | Make real-server access the only validation path or introduce browse/library validation into the local-player smoke gate. |
 
 ## Validation Gates For Later Issues
 
