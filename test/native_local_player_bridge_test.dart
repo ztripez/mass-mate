@@ -11,7 +11,7 @@ void main() {
 
   test('LocalPlayerSnapshot parses typed platform envelopes', () {
     final snapshot = LocalPlayerSnapshot.fromMap({
-      'connectionStatus': 'connected',
+      'connectionStatus': 'ready',
       'playerName': 'Native Player',
       'connectionLabel': 'Connected',
       'mediaTitle': 'Song',
@@ -25,7 +25,7 @@ void main() {
       'isPlaying': true,
     });
 
-    expect(snapshot.connectionStatus, LocalPlayerConnectionStatus.connected);
+    expect(snapshot.connectionStatus, LocalPlayerConnectionStatus.ready);
     expect(snapshot.toPlayerState().mediaItem.title, 'Song');
     expect(snapshot.toPlayerState().playback.position.inMilliseconds, 1200);
   });
@@ -119,6 +119,9 @@ void main() {
     final bridge = MethodChannelNativeLocalPlayerBridge(
       methodChannel: methodChannel,
       eventChannel: eventChannel,
+      connectionSettings: const LocalPlayerConnectionSettings(
+        serverUrl: 'https://music.example.local',
+      ),
     );
     final calls = <MethodCall>[];
 
@@ -145,6 +148,10 @@ void main() {
       'disconnect',
       'sendCommand',
     ]);
+    expect(calls.first.arguments, {
+      'serverUrl': 'https://music.example.local',
+      'sendspinPath': '/sendspin',
+    });
     expect(calls.last.arguments, {
       'command': 'seekTo',
       'arguments': {'positionMs': 7000},
@@ -214,8 +221,8 @@ void main() {
       bridge.snapshots,
       emitsError(
         isA<LocalPlayerBridgeException>()
-            .having((error) => error.kind, 'kind',
-                LocalPlayerErrorKind.unavailable)
+            .having(
+                (error) => error.kind, 'kind', LocalPlayerErrorKind.unavailable)
             .having(
               (error) => error.message,
               'message',

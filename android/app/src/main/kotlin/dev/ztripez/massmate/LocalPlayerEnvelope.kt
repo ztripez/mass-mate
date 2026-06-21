@@ -11,13 +11,18 @@ object LocalPlayerEnvelope {
     const val LOCAL_PLAYER_UNAVAILABLE = "LOCAL_PLAYER_UNAVAILABLE"
     const val LOCAL_PLAYER_NOT_CONNECTED = "LOCAL_PLAYER_NOT_CONNECTED"
     const val LOCAL_PLAYER_INVALID_ENVELOPE = "LOCAL_PLAYER_INVALID_ENVELOPE"
+    const val LOCAL_PLAYER_ENDPOINT_INVALID = "LOCAL_PLAYER_ENDPOINT_INVALID"
+    const val LOCAL_PLAYER_TRANSPORT_ERROR = "LOCAL_PLAYER_TRANSPORT_ERROR"
+    const val LOCAL_PLAYER_PROTOCOL_ERROR = "LOCAL_PLAYER_PROTOCOL_ERROR"
+    const val LOCAL_PLAYER_ROLE_MISMATCH = "LOCAL_PLAYER_ROLE_MISMATCH"
+    const val LOCAL_PLAYER_REJECTED = "LOCAL_PLAYER_REJECTED"
 
-    const val TRANSPORT_UNIMPLEMENTED_MESSAGE =
-        "Native local player service is present, but transport is not implemented yet."
     const val NOT_CONNECTED_MESSAGE = "Native local player is not connected."
     const val INVALID_COMMAND_ENVELOPE_MESSAGE =
         "Local player command envelope is missing an intent-level command."
     const val BIND_FAILED_MESSAGE = "Native local player service could not be bound."
+    const val COMMAND_DISPATCH_DEFERRED_MESSAGE =
+        "Native local player is connected, but command dispatch is not implemented in this slice."
 
     /** Creates a successful method result envelope. */
     fun acceptedResult(): Map<String, Any?> = mapOf("accepted" to true)

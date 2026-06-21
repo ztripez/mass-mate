@@ -16,8 +16,47 @@ enum LocalPlayerConnectionStatus {
   /// The native service reports an active local-player session.
   connected,
 
+  /// The Sendspin handshake completed and the local player is ready.
+  ready,
+
   /// The backend failed and requires explicit recovery.
   failed,
+}
+
+/// Explicit native Sendspin connection settings passed to Android.
+final class LocalPlayerConnectionSettings {
+  /// Creates explicit Sendspin connection settings.
+  const LocalPlayerConnectionSettings({
+    required this.serverUrl,
+    this.sendspinPath = '/sendspin',
+  });
+
+  /// Creates settings from `--dart-define` values.
+  factory LocalPlayerConnectionSettings.fromEnvironment() {
+    const serverUrl = String.fromEnvironment('MASS_MATE_SENDSPIN_SERVER_URL');
+    const sendspinPath = String.fromEnvironment(
+      'MASS_MATE_SENDSPIN_PATH',
+      defaultValue: '/sendspin',
+    );
+    return const LocalPlayerConnectionSettings(
+      serverUrl: serverUrl,
+      sendspinPath: sendspinPath,
+    );
+  }
+
+  /// Configured Music Assistant server URL or Sendspin WebSocket base URL.
+  final String serverUrl;
+
+  /// Sendspin endpoint path appended by the native endpoint builder.
+  final String sendspinPath;
+
+  /// Serializes settings for MethodChannel transport.
+  Map<String, Object?> toMap() {
+    return {
+      'serverUrl': serverUrl,
+      'sendspinPath': sendspinPath,
+    };
+  }
 }
 
 /// Intent-level command names sent over the native bridge.
@@ -433,7 +472,8 @@ LocalPlayerBridgeException? _synthesizeStatusError(
       ),
     LocalPlayerConnectionStatus.disconnected ||
     LocalPlayerConnectionStatus.connecting ||
-    LocalPlayerConnectionStatus.connected =>
+    LocalPlayerConnectionStatus.connected ||
+    LocalPlayerConnectionStatus.ready =>
       null,
   };
 }

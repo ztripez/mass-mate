@@ -40,14 +40,18 @@ final class MethodChannelNativeLocalPlayerBridge
   MethodChannelNativeLocalPlayerBridge({
     MethodChannel methodChannel = const MethodChannel(_methodChannelName),
     EventChannel eventChannel = const EventChannel(_eventChannelName),
+    LocalPlayerConnectionSettings? connectionSettings,
   })  : _methodChannel = methodChannel,
-        _eventChannel = eventChannel;
+        _eventChannel = eventChannel,
+        _connectionSettings = connectionSettings ??
+            LocalPlayerConnectionSettings.fromEnvironment();
 
   static const String _methodChannelName = 'mass_mate/local_player';
   static const String _eventChannelName = 'mass_mate/local_player/snapshots';
 
   final MethodChannel _methodChannel;
   final EventChannel _eventChannel;
+  final LocalPlayerConnectionSettings _connectionSettings;
 
   Stream<LocalPlayerSnapshot>? _snapshots;
 
@@ -101,6 +105,13 @@ final class MethodChannelNativeLocalPlayerBridge
 
   Future<LocalPlayerBridgeResult> _invokeLifecycle(String method) async {
     try {
+      if (method == 'connect') {
+        final result = await _methodChannel.invokeMethod<Object?>(
+          method,
+          _connectionSettings.toMap(),
+        );
+        return LocalPlayerBridgeResult.fromMap(result);
+      }
       final result = await _methodChannel.invokeMethod<Object?>(method);
       return LocalPlayerBridgeResult.fromMap(result);
     } on PlatformException catch (error) {

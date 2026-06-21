@@ -88,7 +88,9 @@ class LocalPlayerChannel private constructor(
         }
 
         when (call.method) {
-            "connect" -> withService(result) { localPlayer -> localPlayer.connect() }
+            "connect" -> withService(result) { localPlayer ->
+                localPlayer.connect(call.arguments as? Map<*, *>)
+            }
             "disconnect" -> withService(result) { localPlayer -> localPlayer.disconnect() }
             "sendCommand" -> withService(result) { localPlayer ->
                 localPlayer.sendCommand(call.arguments as? Map<*, *>)
