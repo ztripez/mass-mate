@@ -11,17 +11,23 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMethodCodec
 
 /**
- * Android host activity that registers native boundary haptics for the Flutter click wheel.
+ * Android host activity that registers native platform channels for Mass Mate.
  *
- * The `mass_mate/haptics` channel handles `boundaryBuzz` calls from Dart by emitting a
- * short two-pulse vibration when a click-wheel-controlled value reaches a range endpoint.
+ * The `mass_mate/haptics` channel handles click-wheel boundary haptics. The local-player
+ * registration installs `mass_mate/local_player` and `mass_mate/local_player/snapshots` channel
+ * handlers that bind the route-independent [LocalPlayerService]. Activity cleanup disposes that
+ * channel owner so service bindings do not leak after the Flutter engine detaches.
  */
 class MainActivity : FlutterActivity() {
+    private var localPlayerChannel: LocalPlayerChannel? = null
+
     /**
      * Registers platform method handlers after the Flutter engine attaches to the activity.
      *
      * The haptics channel uses a background task queue so synchronous vibrator service calls do
-     * not run on Android's main thread during active touch interaction.
+     * not run on Android's main thread during active touch interaction. The local-player channel
+     * intentionally uses main-thread handlers because this skeleton performs no blocking work and
+     * must serialize channel state with Android service-connection callbacks.
      */
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -53,6 +59,15 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        localPlayerChannel = LocalPlayerChannel.register(this, messenger)
+    }
+
+    /** Releases route-independent platform channels when the Flutter engine detaches. */
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        localPlayerChannel?.dispose()
+        localPlayerChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun boundaryBuzz(): Boolean {

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'click_wheel.dart';
 import 'haptics.dart';
+import 'player_connection_status.dart';
 import 'playback/playback_duration_format.dart';
 import 'playback/playback_intent.dart';
 import 'playback/player_adapter.dart';
@@ -37,8 +38,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   WheelMode _mode = WheelMode.seek;
   final WheelIntentResolver _wheelIntentResolver = WheelIntentResolver();
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  String? _playbackError;
 
   PlayerAdapter get _playerAdapter => widget.playerAdapter;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToPlayerAdapter();
+  }
+
+  @override
+  void didUpdateWidget(PlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playerAdapter == widget.playerAdapter) return;
+
+    unawaited(_playerStateSubscription?.cancel());
+    _subscribeToPlayerAdapter();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_playerStateSubscription?.cancel());
+    super.dispose();
+  }
+
+  void _subscribeToPlayerAdapter() {
+    _playerStateSubscription = _playerAdapter.states.listen(
+      (_) {
+        if (!mounted) return;
+        setState(() => _playbackError = null);
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        setState(() => _playbackError = _visiblePlaybackError(error));
+      },
+    );
+  }
 
   void _handleWheelGesture(WheelGesture gesture) {
     final resolution = _wheelIntentResolver.resolve(
@@ -76,10 +113,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _applyPlaybackIntent(PlaybackIntent intent) async {
-    await _playerAdapter.applyIntent(intent);
-    if (!mounted) return;
+    try {
+      await _playerAdapter.applyIntent(intent);
+      if (!mounted) return;
 
-    setState(() {});
+      setState(() => _playbackError = null);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _playbackError = _visiblePlaybackError(error));
+    }
   }
 
   void _commitSeekPreview() {
@@ -91,11 +133,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _applySeekCommitIntent(PlaybackIntent intent) async {
-    await _playerAdapter.applyIntent(intent);
-    if (!mounted) return;
+    try {
+      await _playerAdapter.applyIntent(intent);
+      if (!mounted) return;
 
-    setState(_wheelIntentResolver.completeSeekPreviewCommit);
-    _pulseSeekCommitHaptics();
+      setState(() {
+        _playbackError = null;
+        _wheelIntentResolver.completeSeekPreviewCommit();
+      });
+      _pulseSeekCommitHaptics();
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _playbackError = _visiblePlaybackError(error));
+    }
+  }
+
+  String _visiblePlaybackError(Object error) {
+    return error is Exception ? error.toString() : 'Playback failed: $error';
   }
 
   void _handleWheelGestureEnded() {
@@ -172,9 +226,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                 return Column(
                   children: [
-                    _ConnectionHeader(
-                      playerName: playerState.playerName,
-                      connectionLabel: playerState.connectionLabel,
+                    PlayerConnectionStatusBlock(
+                      playerState: playerState,
+                      playbackError: _playbackError,
                     ),
                     const SizedBox(height: 20),
                     Expanded(
@@ -207,9 +261,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               return Column(
                 children: [
-                  _ConnectionHeader(
-                    playerName: playerState.playerName,
-                    connectionLabel: playerState.connectionLabel,
+                  PlayerConnectionStatusBlock(
+                    playerState: playerState,
+                    playbackError: _playbackError,
                   ),
                   SizedBox(height: isCompactLayout ? 8 : 12),
                   Expanded(
@@ -471,7 +525,7 @@ class _NowPlayingCard extends StatelessWidget {
                   ],
                 ),
                 SizedBox(height: denseSpacing ? 8 : 16),
-                _StatusPill(
+                PlayerStatusPill(
                   icon: isPreviewingSeek ? Icons.travel_explore : mode.icon,
                   text:
                       isPreviewingSeek ? 'Seek preview' : '${mode.label} mode',
@@ -574,59 +628,6 @@ class _UnsupportedViewportMessage extends StatelessWidget {
           'Use a larger phone viewport or rotate to a wider layout.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium,
-        ),
-      ),
-    );
-  }
-}
-
-class _ConnectionHeader extends StatelessWidget {
-  const _ConnectionHeader(
-      {required this.playerName, required this.connectionLabel});
-
-  final String playerName;
-  final String connectionLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Icon(Icons.speaker_group),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            playerName,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-        ),
-        _StatusPill(icon: Icons.wifi_tethering, text: connectionLabel),
-      ],
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16),
-            const SizedBox(width: 6),
-            Text(text),
-          ],
         ),
       ),
     );
