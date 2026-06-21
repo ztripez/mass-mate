@@ -143,7 +143,10 @@ class SendspinConnectionControllerTest {
             listOf(SendspinConnectionStatus.CONNECTING, SendspinConnectionStatus.READY),
             snapshots.map { it.status },
         )
-        assertTrue(transport.sentTexts.first().contains("client/hello"))
+        assertEquals("client/hello", JSONObject(transport.sentTexts[0]).getString("type"))
+        assertEquals("client/state", JSONObject(transport.sentTexts[1]).getString("type"))
+        assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("streamActive"))
+        assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("audioOutputActive"))
         assertTrue(snapshots[1].generation > snapshots[0].generation)
     }
 
@@ -214,7 +217,27 @@ class SendspinConnectionControllerTest {
     }
 
     @Test
-    fun postReadyTextFailsUntilDispatcherExists() {
+    fun postReadyUnknownTextIsLoggedAndIgnored() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val logger = CapturingProtocolLogger()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            protocolLogger = logger,
+        )
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        transport.receiveText(serverHello())
+        transport.receiveText("{\"type\":\"server/future\",\"value\":1}")
+
+        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
+        assertEquals(listOf("server/future"), logger.unknownTypes())
+    }
+
+    @Test
+    fun postReadyInvalidKnownTextFailsVisibly() {
         val transport = FakeSendspinTransport()
         val snapshots = mutableListOf<SendspinConnectionSnapshot>()
         val controller = controller(transport, snapshots)
@@ -222,10 +245,37 @@ class SendspinConnectionControllerTest {
         controller.connect(URI("ws://music.example.local/sendspin"))
         transport.opened()
         transport.receiveText(serverHello())
-        transport.receiveText("{\"type\":\"server/state\"}")
+        transport.receiveText("{\"type\":\"stream/start\",\"codec\":\"pcm\",\"sampleRateHz\":48000,\"channels\":2}")
 
         assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
         assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR, snapshots.last().error?.code)
+        assertTrue(snapshots.last().error?.message.orEmpty().contains("streamId"))
+    }
+
+    @Test
+    fun postReadyKnownTextRoutesTypedEvents() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val events = CapturingProtocolEvents()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            protocolEvents = events,
+        )
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        transport.receiveText(serverHello())
+        transport.receiveText(
+            JSONObject()
+                .put("type", "server/metadata")
+                .put("title", "Captured Song")
+                .put("artist", "Captured Artist")
+                .toString(),
+        )
+
+        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
+        assertEquals(SendspinMetadata(title = "Captured Song", artist = "Captured Artist"), events.metadata.single())
     }
 
     @Test
@@ -387,6 +437,24 @@ class SendspinConnectionControllerTest {
         }
         throw AssertionError("Expected SendspinConnectionException with code $expectedCode")
     }
+}
+
+private class CapturingProtocolEvents : SendspinProtocolEvents {
+    val metadata = mutableListOf<SendspinMetadata>()
+
+    override fun onMetadata(metadata: SendspinMetadata) {
+        this.metadata.add(metadata)
+    }
+}
+
+private class CapturingProtocolLogger : SendspinProtocolLogger {
+    private val warnings = mutableListOf<Map<String, Any?>?>()
+
+    override fun warn(message: String, details: Map<String, Any?>?) {
+        warnings.add(details)
+    }
+
+    fun unknownTypes(): List<String> = warnings.mapNotNull { it?.get("type") as? String }
 }
 
 /** Fake text transport for deterministic hello/goodbye and stale-callback tests. */

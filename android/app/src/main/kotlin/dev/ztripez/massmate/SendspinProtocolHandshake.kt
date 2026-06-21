@@ -8,7 +8,7 @@ import org.json.JSONObject
  * Minimal Sendspin hello/goodbye handshake parser and serializer.
  *
  * This object owns only the connection readiness gate: `client/hello`, `server/hello`, activated
- * role validation, and `client/goodbye`. Full Sendspin message modeling and dispatch remain outside
+ * role validation, and `client/goodbye`. Post-handshake message modeling and dispatch remain outside
  * this layer. [PROTOCOL_VERSION], [advertisedClientRoles], and [requiredClientRoles] are the native
  * invariants required before the local-player backend may report READY. Parsing is deliberately
  * strict: malformed JSON, missing fields, wrong field types, unsupported protocol versions, and

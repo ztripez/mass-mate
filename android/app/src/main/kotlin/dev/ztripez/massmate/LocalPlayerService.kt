@@ -16,8 +16,8 @@ import android.os.Looper
  * playback operations through the Dart adapter seam. Transport open, hello/goodbye, deterministic
  * reconnect, and connection-state aggregation run on a dedicated serial background thread so
  * MethodChannel calls never block Android's main thread on transport locks or callbacks. The
- * service intentionally does not implement audio output, stream lifecycle, clock sync, browse, or a
- * controller command dispatcher.
+ * service intentionally does not implement audio output, stream buffering, clock sync, browse, or
+ * intent-to-Sendspin controller command mapping.
  */
 class LocalPlayerService : Service() {
     private val binder = LocalBinder()

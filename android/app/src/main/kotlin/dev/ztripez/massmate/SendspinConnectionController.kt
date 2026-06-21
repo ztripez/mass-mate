@@ -107,18 +107,22 @@ typealias SendspinLifecycleResult = (SendspinConnectionException?) -> Unit
  * [connect] replaces any active session: the previous session sends `client/goodbye` only after a
  * client hello was sent, closes with [SendspinTransport.NORMAL_CLOSURE], and any later callbacks
  * from that old session are ignored by session id. If replacement goodbye fails, the reconnect is
- * not opened and a failed snapshot/result are emitted. Unsupported text after READY fails loudly
- * until a future dispatcher owns non-handshake messages.
+ * not opened and a failed snapshot/result are emitted. Post-handshake text is parsed by the native
+ * protocol dispatcher so unknown message types are logged/ignored while invalid known messages fail
+ * visibly through snapshots.
  */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
     private val onSnapshot: (SendspinConnectionSnapshot) -> Unit,
     private val queue: SendspinConnectionQueue = SendspinConnectionQueue { task -> task() },
+    protocolEvents: SendspinProtocolEvents = NoopSendspinProtocolEvents,
+    protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
 ) {
     private var sessionId = 0L
     private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
+    private val dispatcher = SendspinProtocolDispatcher(protocolEvents, protocolLogger)
 
     /** Enqueues opening a fresh Sendspin session to [endpoint]. */
     fun connect(endpoint: URI, onResult: SendspinLifecycleResult = {}) {
@@ -217,24 +221,16 @@ class SendspinConnectionController(
     private fun handleText(listenerSessionId: Long, text: String) {
         val session = activeSessionIfCurrent(listenerSessionId) ?: return
         if (session.ready) {
-            failCurrentSession(
-                listenerSessionId,
-                SendspinConnectionException(
-                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
-                    "Received unsupported Sendspin text frame after handshake readiness.",
-                    mapOf("sessionId" to listenerSessionId),
-                ),
-            )
+            dispatchReadyText(listenerSessionId, text)
             return
         }
 
         try {
             val serverHello = SendspinProtocolHandshake.parseServerHello(text)
             SendspinProtocolHandshake.validateServerHello(serverHello)
-            session.ready = true
-            emit(SendspinConnectionSnapshot.ready(nextGeneration()))
         } catch (error: SendspinConnectionException) {
             failCurrentSession(listenerSessionId, error)
+            return
         } catch (error: RuntimeException) {
             failCurrentSession(
                 listenerSessionId,
@@ -244,7 +240,50 @@ class SendspinConnectionController(
                     mapOf("message" to error.message),
                 ),
             )
+            return
         }
+
+        try {
+            sendInitialClientState()
+            session.ready = true
+            emit(SendspinConnectionSnapshot.ready(nextGeneration()))
+        } catch (error: SendspinConnectionException) {
+            failCurrentSession(listenerSessionId, error)
+        } catch (error: RuntimeException) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                    "Failed to send initial Sendspin client state.",
+                    mapOf("message" to error.message),
+                ),
+            )
+        }
+    }
+
+    private fun dispatchReadyText(listenerSessionId: Long, text: String) {
+        try {
+            dispatcher.dispatch(text)
+        } catch (error: SendspinConnectionException) {
+            failCurrentSession(listenerSessionId, error)
+        } catch (error: RuntimeException) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
+                    "Sendspin protocol message could not be dispatched.",
+                    mapOf("message" to error.message),
+                ),
+            )
+        }
+    }
+
+    private fun sendInitialClientState() {
+        val transport = activeTransport ?: throw SendspinConnectionException(
+            LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+            "Cannot send initial Sendspin client state without an active transport.",
+        )
+        transport.sendText(SendspinClientState.initialReady().toText())
     }
 
     private fun handleClosed(listenerSessionId: Long, code: Int, reason: String) {

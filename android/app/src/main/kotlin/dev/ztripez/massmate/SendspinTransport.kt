@@ -32,7 +32,7 @@ interface SendspinTransport {
         /** The underlying WebSocket opened and can accept text frames. */
         fun onOpen()
 
-        /** A text frame arrived; unsupported post-handshake text fails until dispatch exists. */
+        /** A text frame arrived for handshake parsing or native protocol dispatch. */
         fun onText(text: String)
 
         /** The WebSocket closed without an explicit service disconnect. */
