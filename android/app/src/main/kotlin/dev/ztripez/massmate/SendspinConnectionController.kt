@@ -2,7 +2,11 @@ package dev.ztripez.massmate
 
 import java.net.URI
 
-/** Native Sendspin connection status reported through local-player snapshots. */
+/**
+ * Native Sendspin connection status reported through local-player snapshots.
+ *
+ * @property bridgeValue String value serialized into Dart snapshot envelopes.
+ */
 enum class SendspinConnectionStatus(val bridgeValue: String) {
     /** No active Sendspin transport session is owned by the native local-player service. */
     DISCONNECTED("disconnected"),
@@ -20,11 +24,12 @@ enum class SendspinConnectionStatus(val bridgeValue: String) {
 /**
  * Single native representation of Sendspin connection state emitted to Flutter.
  *
- * [generation] increases for every controller-owned snapshot so the service can ignore stale
- * main-thread posts after disconnect or reconnect. [status] is the typed lifecycle state.
- * [connectionLabel], [mediaTitle], and [mediaSubtitle] are user-visible bridge fields. [error]
- * is present only for [SendspinConnectionStatus.FAILED] snapshots and carries the failure code,
- * message, and detail payload returned through the platform bridge.
+ * @property generation Controller-owned ordering value for service-side stale post rejection.
+ * @property status Typed lifecycle state.
+ * @property connectionLabel User-visible connection label.
+ * @property mediaTitle Placeholder title sent through the existing player snapshot bridge.
+ * @property mediaSubtitle Placeholder subtitle sent through the existing player snapshot bridge.
+ * @property error Failure code, message, and details for [SendspinConnectionStatus.FAILED].
  */
 data class SendspinConnectionSnapshot(
     val generation: Long,
@@ -84,7 +89,13 @@ fun interface SendspinConnectionQueue {
     fun execute(task: () -> Unit)
 }
 
-/** Callback receiving the platform-channel result for an enqueued lifecycle request. */
+/**
+ * Callback receiving the platform-channel result for an enqueued lifecycle request.
+ *
+ * A `null` argument means the lifecycle request was accepted. A non-null
+ * [SendspinConnectionException] means the connect/disconnect request failed and should be returned
+ * as a typed bridge error.
+ */
 typealias SendspinLifecycleResult = (SendspinConnectionException?) -> Unit
 
 /**
@@ -141,7 +152,7 @@ class SendspinConnectionController(
         }
         val nextSessionId = ++sessionId
         activeTransport = transport
-        activeSession = ActiveSession(nextSessionId, endpoint)
+        activeSession = ActiveSession(nextSessionId)
         emit(SendspinConnectionSnapshot.connecting(nextGeneration(), endpoint))
 
         try {
@@ -300,7 +311,33 @@ class SendspinConnectionController(
             )
         }
 
-        return closeError ?: transportCloseError
+        return aggregateCloseErrors(closeError, transportCloseError)
+    }
+
+    private fun aggregateCloseErrors(
+        goodbyeError: SendspinConnectionException?,
+        transportCloseError: SendspinConnectionException?,
+    ): SendspinConnectionException? {
+        val failures = listOfNotNull(
+            goodbyeError?.toCloseFailure("goodbye"),
+            transportCloseError?.toCloseFailure("transportClose"),
+        )
+        if (failures.isEmpty()) return null
+        if (failures.size == 1) return goodbyeError ?: transportCloseError
+        return SendspinConnectionException(
+            LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+            "Multiple Sendspin disconnect failures occurred.",
+            mapOf("closeFailures" to failures),
+        )
+    }
+
+    private fun SendspinConnectionException.toCloseFailure(stage: String): Map<String, Any?> {
+        return mapOf(
+            "stage" to stage,
+            "code" to code,
+            "message" to message,
+            "details" to details,
+        )
     }
 
     private fun failCurrentSession(listenerSessionId: Long, error: SendspinConnectionException) {
@@ -336,7 +373,6 @@ class SendspinConnectionController(
 
     private data class ActiveSession(
         val id: Long,
-        val endpoint: URI,
         var clientHelloSent: Boolean = false,
         var ready: Boolean = false,
     )

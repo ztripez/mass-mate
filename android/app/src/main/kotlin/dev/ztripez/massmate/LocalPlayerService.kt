@@ -150,7 +150,7 @@ class LocalPlayerService : Service() {
     }
 
     private fun applyLocalFailure(error: SendspinConnectionException) {
-        currentSnapshot = SendspinConnectionSnapshot.failed(currentSnapshot.generation + 1, error)
+        currentSnapshot = SendspinConnectionSnapshot.failed(currentSnapshot.generation, error)
         emitSnapshot()
     }
 

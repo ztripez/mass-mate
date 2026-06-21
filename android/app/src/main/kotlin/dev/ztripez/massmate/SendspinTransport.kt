@@ -101,7 +101,14 @@ class OkHttpWebSocketSendspinTransport(
     }
 
     override fun close(code: Int, reason: String?) {
-        webSocket?.close(code, reason)
+        val socket = webSocket ?: return
+        if (!socket.close(code, reason)) {
+            throw SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                "Sendspin WebSocket refused to enqueue close.",
+                mapOf("code" to code, "reason" to reason),
+            )
+        }
         webSocket = null
     }
 }

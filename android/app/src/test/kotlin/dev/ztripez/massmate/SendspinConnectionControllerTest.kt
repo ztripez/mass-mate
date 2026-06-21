@@ -52,6 +52,16 @@ class SendspinConnectionControllerTest {
         assertConnectionError(LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID) {
             SendspinEndpointBuilder.buildEndpoint(SendspinServerSettings("https://music.example.local", "sendspin"))
         }
+        assertConnectionError(LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID) {
+            SendspinEndpointBuilder.fromBridgeArguments(
+                mapOf("serverUrl" to "https://music.example.local", "sendspinPath" to "   "),
+            )
+        }
+        assertConnectionError(LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID) {
+            SendspinEndpointBuilder.fromBridgeArguments(
+                mapOf("serverUrl" to "https://music.example.local", "sendspinPath" to 7),
+            )
+        }
     }
 
     @Test
@@ -249,6 +259,43 @@ class SendspinConnectionControllerTest {
     }
 
     @Test
+    fun disconnectSurfacesCloseFailure() {
+        val transport = FakeSendspinTransport(throwOnClose = true)
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = controller(transport, snapshots)
+        var disconnectError: SendspinConnectionException? = null
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        controller.disconnect { disconnectError = it }
+
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, disconnectError?.code)
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals("close refused", disconnectError?.details?.get("message"))
+    }
+
+    @Test
+    fun disconnectAggregatesGoodbyeAndCloseFailures() {
+        val transport = FakeSendspinTransport(
+            throwOnSendContaining = "client/goodbye",
+            throwOnClose = true,
+        )
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = controller(transport, snapshots)
+        var disconnectError: SendspinConnectionException? = null
+
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        controller.disconnect { disconnectError = it }
+
+        val failures = disconnectError?.details?.get("closeFailures") as? List<*>
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, disconnectError?.code)
+        assertEquals(2, failures?.size)
+        assertTrue(failures.toString().contains("goodbye"))
+        assertTrue(failures.toString().contains("transportClose"))
+    }
+
+    @Test
     fun reconnectDeterminismIgnoresStaleCallbacksAndUsesSecondEndpoint() {
         val first = FakeSendspinTransport()
         val second = FakeSendspinTransport()
@@ -318,6 +365,7 @@ class SendspinConnectionControllerTest {
 /** Fake text transport for deterministic hello/goodbye and stale-callback tests. */
 private class FakeSendspinTransport(
     private val throwOnSendContaining: String? = null,
+    private val throwOnClose: Boolean = false,
 ) : SendspinTransport {
     val sentTexts = mutableListOf<String>()
     var endpoint: URI? = null
@@ -339,6 +387,7 @@ private class FakeSendspinTransport(
     }
 
     override fun close(code: Int, reason: String?) {
+        if (throwOnClose) throw IllegalStateException("close refused")
         closed = true
         closeCode = code
         closeReason = reason

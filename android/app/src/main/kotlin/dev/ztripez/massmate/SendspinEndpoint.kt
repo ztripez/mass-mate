@@ -5,10 +5,11 @@ import java.net.URI
 /**
  * Explicit Sendspin server settings supplied by the Flutter bridge.
  *
- * [serverUrl] is the required configured Music Assistant base URL or direct Sendspin WebSocket base
- * URL. Accepted schemes are `http`, `https`, `ws`, and `wss`; HTTP schemes are converted to their
- * WebSocket equivalents. [sendspinPath] is the endpoint path appended to the base path and must
- * start with `/`; Flutter defaults it to `/sendspin` when `MASS_MATE_SENDSPIN_PATH` is absent.
+ * @property serverUrl Required configured Music Assistant base URL or direct Sendspin WebSocket
+ * base URL. Accepted schemes are `http`, `https`, `ws`, and `wss`; HTTP schemes are converted to
+ * their WebSocket equivalents.
+ * @property sendspinPath Endpoint path appended to the base path. It must start with `/`; Flutter
+ * defaults it to `/sendspin` when `MASS_MATE_SENDSPIN_PATH` is absent.
  */
 data class SendspinServerSettings(
     val serverUrl: String,
@@ -42,9 +43,19 @@ object SendspinEndpointBuilder {
             )
         }
 
-        val path = (arguments.get("sendspinPath") as? String)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_SENDSPIN_PATH
+        val path = if (arguments.containsKey("sendspinPath")) {
+            val configuredPath = arguments["sendspinPath"]
+            if (configuredPath !is String || configuredPath.isBlank()) {
+                throw SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_ENDPOINT_INVALID,
+                    "MASS_MATE_SENDSPIN_PATH must be a nonblank string when provided.",
+                    mapOf("field" to "sendspinPath"),
+                )
+            }
+            configuredPath
+        } else {
+            DEFAULT_SENDSPIN_PATH
+        }
 
         return SendspinServerSettings(serverUrl.trim(), path.trim())
     }
@@ -123,7 +134,13 @@ object SendspinEndpointBuilder {
     }
 }
 
-/** Typed Sendspin connection failure surfaced through local-player envelopes and snapshots. */
+/**
+ * Typed Sendspin connection failure surfaced through local-player envelopes and snapshots.
+ *
+ * @property code Bridge error code from [LocalPlayerEnvelope].
+ * @property message Human-readable failure message suitable for UI surfacing.
+ * @property details Optional structured diagnostics for tests and debug displays.
+ */
 class SendspinConnectionException(
     val code: String,
     override val message: String,
