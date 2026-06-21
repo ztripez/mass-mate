@@ -54,13 +54,37 @@ Reference links:
 
 `docs/wheel-ux-strictness.md` is the canonical taxonomy for the strictness classes named here. This matrix only applies those class names to feature rows so the detailed class meanings stay in one place.
 
-| Matrix rows | UX strictness class |
+| Music Assistant function row | UX strictness class |
 | --- | --- |
-| Play / pause; previous / next track; audiobook / podcast chapter movement; scrub current track; fine/coarse seek precision; volume; mute | Immediate playback |
-| Active queue navigation; remove queue item; clear queue; shuffle; repeat; radio continuation; favorite current item; add item to queue / play next | Frequent session controls |
-| Browse library; search library; play album / playlist / radio station; item action sheets | Browsing/navigation |
-| Select active player/output; transfer playback between players; join / unjoin group; power on/off player; provider selection | Configuration/session setup |
-| Authentication / server discovery; diagnostics; server configuration; metadata refresh / admin actions | Settings/admin |
+| Play / pause | Immediate playback |
+| Stop | Immediate playback |
+| Previous / next track | Immediate playback |
+| Audiobook / podcast chapter movement | Immediate playback |
+| Scrub current track | Immediate playback |
+| Fine/coarse seek precision | Immediate playback |
+| Volume | Immediate playback |
+| Mute | Immediate playback |
+| Group volume | Immediate playback |
+| Power on/off player | Configuration/session setup |
+| Active queue navigation | Frequent session controls |
+| Remove queue item | Frequent session controls |
+| Move queue item | Frequent session controls |
+| Clear queue | Frequent session controls |
+| Save queue as playlist | Frequent session controls |
+| Shuffle | Frequent session controls |
+| Repeat | Frequent session controls |
+| Radio continuation / don't stop the music | Frequent session controls |
+| Favorite current item | Frequent session controls |
+| Browse library | Browsing/navigation |
+| Search library | Browsing/navigation |
+| Play album / playlist / radio station | Browsing/navigation |
+| Add item to queue / play next | Frequent session controls |
+| Select active player/output | Configuration/session setup |
+| Transfer playback between players | Configuration/session setup |
+| Join / unjoin group | Configuration/session setup |
+| Announcements / TTS | Settings/admin |
+| Metadata refresh / admin actions | Settings/admin |
+| Authentication / server discovery | Settings/admin |
 
 ## Music Assistant target button mapping
 

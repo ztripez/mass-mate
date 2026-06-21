@@ -18,11 +18,9 @@ This document is product documentation only. It does not implement Music Assista
 
 ## Design Rules
 
-- Treat play/pause, seek, scrub, volume, previous, next, and chapter or relative skip as the most strict wheel-first paths.
-- Treat queue navigation, repeat, shuffle, favorite, and focused queue actions as strict session controls, not as secondary settings.
-- Treat library and search browsing as medium strictness: the wheel should navigate visible results, while text entry and deeper provider browsing can use normal mobile controls.
-- Treat speaker output and grouping as relaxed setup/configuration flows. They must be reachable, but they should not be optimized for one-handed rapid changes before playback, queue, seek, volume, and browsing are solid.
-- Treat diagnostics, server configuration, provider administration, discovery, and authentication as normal app UI unless a future contract explicitly promotes a specific action into a wheel-first flow.
+- Use the strictness table above as the single source for class meanings, examples, and expectations.
+- Classify each new Music Assistant capability by user-session urgency before designing its wheel or touch affordance.
+- A lower strictness class must not weaken a higher strictness path that shares the same screen. Setup/admin affordances must never make playback, queue, seek, volume, or browsing harder to use.
 - Use Mode terminology for wheel behavior switching. The MODE/top control may cycle or back out according to the current contract; this doc does not define a separate navigation model.
 
 ## Matrix Usage
