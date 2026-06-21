@@ -40,7 +40,7 @@ void main() {
     expect(find.text('Mass Mate'), findsOneWidget);
     expect(find.text('Chapter 12: Night Drive'), findsOneWidget);
     expect(find.byType(ClickWheel), findsOneWidget);
-    expect(find.text('MENU'), findsOneWidget);
+    expect(find.text('MODE'), findsOneWidget);
 
     final wheelTop = tester.getTopLeft(find.byType(ClickWheel)).dy;
     final wheelCenter = tester.getCenter(find.byType(ClickWheel)).dy;
@@ -48,7 +48,7 @@ void main() {
     expect(wheelTop, greaterThan(cardTop));
     expect(wheelCenter, greaterThan(844 * 0.65));
 
-    await tester.tap(find.text('MENU'));
+    await tester.tap(find.text('MODE'));
     await tester.pump();
 
     expect(find.text('Volume mode'), findsAtLeastNWidgets(1));
@@ -168,11 +168,11 @@ void main() {
     expect(find.text('Seek preview'), findsOneWidget);
     expect(find.textContaining('committed 18:42'), findsOneWidget);
 
-    await tester.tap(find.text('MENU'));
+    await tester.tap(find.text('MODE'));
     await tester.pump();
-    await tester.tap(find.text('MENU'));
+    await tester.tap(find.text('MODE'));
     await tester.pump();
-    await tester.tap(find.text('MENU'));
+    await tester.tap(find.text('MODE'));
     await tester.pump();
 
     expect(find.text('Seek mode'), findsAtLeastNWidgets(1));
@@ -444,13 +444,13 @@ void _capturePlatformCalls(List<MethodCall> platformCalls) {
 }
 
 Future<void> _selectVolumeMode(WidgetTester tester) async {
-  await tester.tap(find.text('MENU'));
+  await tester.tap(find.text('MODE'));
   await tester.pump();
 }
 
 Future<void> _selectQueueMode(WidgetTester tester) async {
   await _selectVolumeMode(tester);
-  await tester.tap(find.text('MENU'));
+  await tester.tap(find.text('MODE'));
   await tester.pump();
 }
 

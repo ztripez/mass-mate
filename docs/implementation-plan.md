@@ -12,7 +12,7 @@ Parent docs:
 - Extend playback intents so the UI can express every P0/P1 wheel action without knowing Music Assistant command names.
 - Keep `ClickWheel` gesture-only.
 - Keep seek preview local and explicit.
-- Ensure play/pause, MENU/back, and transport actions do not accidentally commit active seek preview.
+- Ensure play/pause, MODE/back, and transport actions do not accidentally commit active seek preview.
 
 ## Slice 2: Adapter seam
 
@@ -30,7 +30,7 @@ Parent docs:
 
 ## Slice 4: Wheel-native surfaces
 
-- Add output selector opened by MENU hold.
+- Add output selector opened by MODE hold.
 - Add queue cursor surface using the matrix behavior.
 - Add lightweight playback options overlay for shuffle/repeat/favorite only after P0 playback is stable.
 - Add browse/search navigation after queue/output behavior is no longer moving.
