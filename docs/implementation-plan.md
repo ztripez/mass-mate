@@ -5,6 +5,7 @@ This plan turns the wheel mapping matrix into implementation slices.
 Parent docs:
 
 - `docs/click-wheel-contract.md`
+- `docs/wheel-navigation-model.md`
 - `docs/music-assistant-wheel-matrix.md`
 
 ## Slice 1: Contract and resolver coverage
