@@ -25,7 +25,7 @@ This document is product documentation only. It does not implement Music Assista
 
 ## Matrix Usage
 
-`docs/music-assistant-wheel-matrix.md` contains the Music Assistant feature mapping and a compact row-to-strictness index that applies the class names defined here. When adding or revising rows there, classify the feature by user-session urgency rather than by backend priority alone.
+`docs/music-assistant-wheel-matrix.md` contains the Music Assistant feature mapping and per-row UX strictness classifications that apply the class names defined here. When adding or revising rows there, classify the feature by user-session urgency rather than by backend priority alone.
 
 A feature can be high integration priority without being a strict wheel-first flow. For example, selected-player persistence may be necessary infrastructure for real playback, while speaker grouping remains a relaxed setup/configuration flow from a wheel UX perspective.
 
