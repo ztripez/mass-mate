@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mass_mate/music_assistant/music_assistant_client.dart';
 import 'package:mass_mate/music_assistant/music_assistant_player_adapter.dart';
 import 'package:mass_mate/playback/playback_intent.dart';
+import 'package:mass_mate/playback/player_adapter.dart';
 import 'package:mass_mate/playback/player_state.dart';
 
 void main() {
@@ -13,6 +14,7 @@ void main() {
       targetId: 'queue-main',
       initialState: PlayerState.localDemo(),
     );
+    addTearDown(adapter.dispose);
 
     const seekIntent = SeekToPlaybackIntent(Duration(minutes: 24));
     await adapter.applyIntent(seekIntent);
@@ -30,6 +32,7 @@ void main() {
       targetId: 'queue-main',
       initialState: PlayerState.localDemo(),
     );
+    addTearDown(adapter.dispose);
     final initialState = adapter.state;
 
     expect(
@@ -49,6 +52,25 @@ void main() {
         initialState: PlayerState.localDemo(),
       ),
       throwsArgumentError,
+    );
+  });
+
+  test('MusicAssistantPlayerAdapter lifecycle fails until implemented',
+      () async {
+    final adapter = MusicAssistantPlayerAdapter(
+      client: _RecordingMusicAssistantClient(),
+      targetId: 'queue-main',
+      initialState: PlayerState.localDemo(),
+    );
+    addTearDown(adapter.dispose);
+
+    await expectLater(
+      adapter.connect(),
+      throwsA(isA<PlayerAdapterException>()),
+    );
+    await expectLater(
+      adapter.disconnect(),
+      throwsA(isA<PlayerAdapterException>()),
     );
   });
 }

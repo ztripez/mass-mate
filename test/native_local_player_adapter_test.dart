@@ -22,6 +22,44 @@ void main() {
     expect(bridge.disconnectCalls, 1);
   });
 
+  test('NativeLocalPlayerAdapter connect rejection throws bridge exception',
+      () async {
+    final bridge = FakeNativeLocalPlayerBridge()
+      ..connectResult = const LocalPlayerBridgeResult.failed(
+        LocalPlayerBridgeException(
+          kind: LocalPlayerErrorKind.unavailable,
+          message: 'Native local player unavailable.',
+        ),
+      );
+    addTearDown(bridge.dispose);
+    final adapter = NativeLocalPlayerAdapter(bridge: bridge);
+    addTearDown(adapter.dispose);
+
+    await expectLater(
+        adapter.connect(), throwsA(isA<LocalPlayerBridgeException>()));
+    expect(bridge.connectCalls, 1);
+  });
+
+  test('NativeLocalPlayerAdapter disconnect rejection throws bridge exception',
+      () async {
+    final bridge = FakeNativeLocalPlayerBridge()
+      ..disconnectResult = const LocalPlayerBridgeResult.failed(
+        LocalPlayerBridgeException(
+          kind: LocalPlayerErrorKind.failed,
+          message: 'Native local player disconnect failed.',
+        ),
+      );
+    addTearDown(bridge.dispose);
+    final adapter = NativeLocalPlayerAdapter(bridge: bridge);
+    addTearDown(adapter.dispose);
+
+    await expectLater(
+      adapter.disconnect(),
+      throwsA(isA<LocalPlayerBridgeException>()),
+    );
+    expect(bridge.disconnectCalls, 1);
+  });
+
   test('NativeLocalPlayerAdapter sends intent-level command envelopes',
       () async {
     final bridge = FakeNativeLocalPlayerBridge();
@@ -63,13 +101,65 @@ void main() {
     );
     addTearDown(subscription.cancel);
 
-    bridge.emitSnapshot(nativeSnapshot(mediaTitle: 'Bridge Snapshot'));
+    bridge.emitSnapshot(
+      nativeSnapshot(
+        playerName: 'Native Player',
+        connectionLabel: 'Connected over fake bridge',
+        mediaTitle: 'Bridge Snapshot',
+        mediaSubtitle: 'Bridge Artist',
+        position: const Duration(minutes: 5),
+        trackLength: const Duration(minutes: 9),
+        volume: 0.33,
+        queueIndex: 4,
+        queueMinIndex: 2,
+        queueMaxIndex: 8,
+        isPlaying: false,
+      ),
+    );
 
+    expect(adapter.state.playerName, 'Native Player');
+    expect(adapter.state.connectionLabel, 'Connected over fake bridge');
     expect(adapter.state.mediaItem.title, 'Bridge Snapshot');
-    expect(adapter.state.connectionLabel, 'Native local player connected');
-    expect(adapter.state.playback.position,
-        const Duration(minutes: 2, seconds: 3));
+    expect(adapter.state.mediaItem.subtitle, 'Bridge Artist');
+    expect(adapter.state.playback.position, const Duration(minutes: 5));
+    expect(adapter.state.playback.trackLength, const Duration(minutes: 9));
+    expect(adapter.state.playback.volume, 0.33);
+    expect(adapter.state.playback.queueIndex, 4);
+    expect(adapter.state.playback.queueMinIndex, 2);
+    expect(adapter.state.playback.queueMaxIndex, 8);
+    expect(adapter.state.isPlaying, isFalse);
     expect(emittedStates, ['Bridge Snapshot']);
+  });
+
+  test('NativeLocalPlayerAdapter emits snapshot errors after updating state',
+      () async {
+    final bridge = FakeNativeLocalPlayerBridge();
+    addTearDown(bridge.dispose);
+    final adapter = NativeLocalPlayerAdapter(bridge: bridge);
+    addTearDown(adapter.dispose);
+    final errors = <Object>[];
+    final subscription = adapter.states.listen(
+      (_) {},
+      onError: errors.add,
+    );
+    addTearDown(subscription.cancel);
+
+    bridge.emitSnapshot(
+      nativeSnapshot(
+        connectionStatus: LocalPlayerConnectionStatus.failed,
+        connectionLabel: 'Native local player failed',
+        mediaTitle: 'Failure snapshot',
+        error: const LocalPlayerBridgeException(
+          kind: LocalPlayerErrorKind.notConnected,
+          message: 'Native local player is not connected.',
+        ),
+      ),
+    );
+
+    expect(adapter.state.connectionLabel, 'Native local player failed');
+    expect(adapter.state.mediaItem.title, 'Failure snapshot');
+    expect(errors, hasLength(1));
+    expect(errors.single, isA<LocalPlayerBridgeException>());
   });
 
   test('NativeLocalPlayerAdapter surfaces native command failures', () async {
@@ -106,6 +196,11 @@ void main() {
 
     expect(find.text('Streamed Native Title'), findsOneWidget);
     expect(bridge.connectCalls, 0);
+    expect(bridge.disconnectCalls, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+
     expect(bridge.disconnectCalls, 0);
   });
 

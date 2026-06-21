@@ -2,18 +2,29 @@ import 'dart:async';
 
 import 'package:mass_mate/playback/native_local_player_bridge.dart';
 
+/// In-memory native local-player bridge used by Dart and widget tests.
 final class FakeNativeLocalPlayerBridge implements NativeLocalPlayerBridge {
   final StreamController<LocalPlayerSnapshot> _snapshots =
       StreamController<LocalPlayerSnapshot>.broadcast(sync: true);
 
+  /// Number of lifecycle connect requests received by the fake bridge.
   int connectCalls = 0;
+
+  /// Number of lifecycle disconnect requests received by the fake bridge.
   int disconnectCalls = 0;
+
+  /// Intent-level command envelopes received by the fake bridge.
   final List<LocalPlayerCommandEnvelope> commands = [];
 
+  /// Result returned by [connect].
   LocalPlayerBridgeResult connectResult =
       const LocalPlayerBridgeResult.accepted();
+
+  /// Result returned by [disconnect].
   LocalPlayerBridgeResult disconnectResult =
       const LocalPlayerBridgeResult.accepted();
+
+  /// Result returned by [sendCommand].
   LocalPlayerBridgeResult commandResult =
       const LocalPlayerBridgeResult.accepted();
 
@@ -40,19 +51,23 @@ final class FakeNativeLocalPlayerBridge implements NativeLocalPlayerBridge {
     return commandResult;
   }
 
+  /// Emits [snapshot] on the fake native snapshot stream.
   void emitSnapshot(LocalPlayerSnapshot snapshot) {
     _snapshots.add(snapshot);
   }
 
+  /// Emits [error] on the fake native snapshot stream.
   void emitError(Object error) {
     _snapshots.addError(error);
   }
 
+  /// Closes fake stream resources.
   Future<void> dispose() async {
     await _snapshots.close();
   }
 }
 
+/// Builds a complete fake local-player snapshot for adapter and widget tests.
 LocalPlayerSnapshot nativeSnapshot({
   LocalPlayerConnectionStatus connectionStatus =
       LocalPlayerConnectionStatus.connected,

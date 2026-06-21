@@ -3,6 +3,30 @@ import 'dart:async';
 import 'playback_intent.dart';
 import 'player_state.dart';
 
+/// Machine-readable playback adapter error category.
+enum PlayerAdapterErrorKind {
+  /// The selected backend does not implement the requested lifecycle operation.
+  unsupported,
+
+  /// The selected backend failed while processing a lifecycle or playback request.
+  failed,
+}
+
+/// Exception raised by playback adapters when backend operations cannot succeed.
+final class PlayerAdapterException implements Exception {
+  /// Creates a typed playback adapter exception.
+  const PlayerAdapterException({required this.kind, required this.message});
+
+  /// Machine-readable error category.
+  final PlayerAdapterErrorKind kind;
+
+  /// User-visible failure message.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Intent-level playback adapter consumed by the player UI.
 ///
 /// Implementations may be local demo state, a fake test adapter, or a Music Assistant-backed
@@ -31,4 +55,11 @@ abstract interface class PlayerAdapter {
   /// Implementations must throw when an intent cannot be applied. They must not report
   /// success for a remote command that was not accepted by its backend.
   Future<PlayerState> applyIntent(PlaybackIntent intent);
+
+  /// Releases adapter-owned subscriptions, stream controllers, or native observers.
+  ///
+  /// Route widgets may dispose their adapter instance when they own that instance, but
+  /// disposing an adapter must not be treated as an implicit backend disconnect unless the
+  /// adapter's own documentation says it owns the backend lifecycle.
+  Future<void> dispose();
 }

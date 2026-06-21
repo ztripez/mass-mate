@@ -210,6 +210,11 @@ final class _RecordingPlayerAdapter implements PlayerAdapter {
     _states.add(_state);
     return _state;
   }
+
+  @override
+  Future<void> dispose() async {
+    await _states.close();
+  }
 }
 
 final class _DelayedPlayerAdapter implements PlayerAdapter {
@@ -240,6 +245,11 @@ final class _DelayedPlayerAdapter implements PlayerAdapter {
     _state = projectPlaybackIntent(_state, intent);
     _states.add(_state);
     return _state;
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _states.close();
   }
 
   void acceptPendingIntent() => _pendingIntent.complete();

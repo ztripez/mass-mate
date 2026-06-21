@@ -17,6 +17,8 @@ import io.flutter.plugin.common.StandardMethodCodec
  * short two-pulse vibration when a click-wheel-controlled value reaches a range endpoint.
  */
 class MainActivity : FlutterActivity() {
+    private var localPlayerChannel: LocalPlayerChannel? = null
+
     /**
      * Registers platform method handlers after the Flutter engine attaches to the activity.
      *
@@ -54,7 +56,14 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        LocalPlayerChannel.register(this, messenger)
+        localPlayerChannel = LocalPlayerChannel.register(this, messenger)
+    }
+
+    /** Releases route-independent platform channels when the Flutter engine detaches. */
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        localPlayerChannel?.dispose()
+        localPlayerChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun boundaryBuzz(): Boolean {

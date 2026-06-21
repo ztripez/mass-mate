@@ -37,6 +37,42 @@ void main() {
     );
   });
 
+  test('LocalPlayerSnapshot synthesizes errors for failed statuses', () {
+    final unavailable = LocalPlayerSnapshot.fromMap({
+      'connectionStatus': 'unavailable',
+      'playerName': 'Native Player',
+      'connectionLabel': 'Unavailable',
+      'mediaTitle': 'Unavailable title',
+      'mediaSubtitle': 'Unavailable subtitle',
+      'positionMs': 0,
+      'trackLengthMs': 1,
+      'volume': 0.0,
+      'queueIndex': 1,
+      'queueMinIndex': 1,
+      'queueMaxIndex': 1,
+      'isPlaying': false,
+    });
+
+    expect(unavailable.error?.kind, LocalPlayerErrorKind.unavailable);
+
+    final failed = LocalPlayerSnapshot.fromMap({
+      'connectionStatus': 'failed',
+      'playerName': 'Native Player',
+      'connectionLabel': 'Failed',
+      'mediaTitle': 'Failed title',
+      'mediaSubtitle': 'Failed subtitle',
+      'positionMs': 0,
+      'trackLengthMs': 1,
+      'volume': 0.0,
+      'queueIndex': 1,
+      'queueMinIndex': 1,
+      'queueMaxIndex': 1,
+      'isPlaying': false,
+    });
+
+    expect(failed.error?.kind, LocalPlayerErrorKind.failed);
+  });
+
   test('LocalPlayerBridgeResult parses nested native errors', () {
     final result = LocalPlayerBridgeResult.fromMap({
       'accepted': false,
@@ -49,6 +85,31 @@ void main() {
     expect(result.accepted, isFalse);
     expect(result.error?.kind, LocalPlayerErrorKind.notConnected);
     expect(result.error?.message, 'Native local player is not connected.');
+  });
+
+  test('LocalPlayerBridgeResult rejects contradictory success errors', () {
+    final result = LocalPlayerBridgeResult.fromMap({
+      'accepted': true,
+      'error': {
+        'code': 'LOCAL_PLAYER_NOT_CONNECTED',
+        'message': 'Native local player is not connected.',
+      },
+    });
+
+    expect(result.accepted, isFalse);
+    expect(result.error?.kind, LocalPlayerErrorKind.invalidEnvelope);
+  });
+
+  test('LocalPlayerBridgeResult rejects missing accepted flag', () {
+    final result = LocalPlayerBridgeResult.fromMap({
+      'error': {
+        'code': 'LOCAL_PLAYER_NOT_CONNECTED',
+        'message': 'Native local player is not connected.',
+      },
+    });
+
+    expect(result.accepted, isFalse);
+    expect(result.error?.kind, LocalPlayerErrorKind.invalidEnvelope);
   });
 
   test('MethodChannelNativeLocalPlayerBridge sends lifecycle and command calls',
@@ -90,6 +151,36 @@ void main() {
     });
   });
 
+  test('MethodChannelNativeLocalPlayerBridge maps platform exceptions',
+      () async {
+    const methodChannel = MethodChannel('test/local_player_exception');
+    const eventChannel = EventChannel('test/local_player_exception/snapshots');
+    final bridge = MethodChannelNativeLocalPlayerBridge(
+      methodChannel: methodChannel,
+      eventChannel: eventChannel,
+    );
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (call) async {
+      throw PlatformException(
+        code: 'LOCAL_PLAYER_NOT_CONNECTED',
+        message: 'Native local player is not connected.',
+        details: {'source': 'test'},
+      );
+    });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(methodChannel, null),
+    );
+
+    final result = await bridge.connect();
+
+    expect(result.accepted, isFalse);
+    expect(result.error?.kind, LocalPlayerErrorKind.notConnected);
+    expect(result.error?.message, 'Native local player is not connected.');
+    expect(result.error?.details, {'source': 'test'});
+  });
+
   test('player adapter factory can select the native local-player backend', () {
     final bridge = FakeNativeLocalPlayerBridge();
     addTearDown(bridge.dispose);
@@ -98,6 +189,7 @@ void main() {
       backend: PlayerBackendSelection.nativeLocalPlayer,
       nativeBridge: bridge,
     );
+    addTearDown(adapter.dispose);
 
     expect(adapter.state.connectionLabel, 'Native local player disconnected');
   });

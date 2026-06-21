@@ -12,7 +12,13 @@ enum PlayerBackendSelection {
   nativeLocalPlayer,
 }
 
-/// Creates a playback adapter for [backend].
+/// Creates the playback adapter selected for the app process.
+///
+/// The demo backend remains the default prototype backend. Selecting
+/// [PlayerBackendSelection.nativeLocalPlayer] creates an adapter backed by the Android
+/// service bridge and preserves fail-loud behavior: a native connection or command
+/// failure is surfaced by that adapter rather than silently replacing it with demo state.
+/// [nativeBridge] is only for injecting a fake bridge in tests.
 PlayerAdapter createPlayerAdapter({
   required PlayerBackendSelection backend,
   NativeLocalPlayerBridge? nativeBridge,
@@ -27,7 +33,9 @@ PlayerAdapter createPlayerAdapter({
 
 /// Selects the default backend from `--dart-define=MASS_MATE_PLAYER_BACKEND=...`.
 ///
-/// Unknown values fail loudly instead of silently falling back to the demo backend.
+/// Supported values are `demo` and `native-local-player`. Unknown values fail loudly
+/// instead of silently falling back to the demo backend because a requested native
+/// backend failure must remain visible.
 PlayerBackendSelection playerBackendFromEnvironment() {
   const backendName = String.fromEnvironment(
     'MASS_MATE_PLAYER_BACKEND',

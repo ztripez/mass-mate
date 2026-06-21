@@ -145,6 +145,10 @@ final class LocalPlayerBridgeResult {
   final LocalPlayerBridgeException? error;
 
   /// Throws [error] when the result was not accepted.
+  ///
+  /// Accepted native replies are the only successful result. Rejected, failed, malformed,
+  /// or contradictory envelopes become [LocalPlayerBridgeException] values so callers
+  /// cannot accidentally treat native backend failure as local success.
   void throwIfFailed() {
     final failure = error;
     if (!accepted && failure != null) throw failure;
@@ -157,6 +161,12 @@ final class LocalPlayerBridgeResult {
   }
 
   /// Parses a MethodChannel result envelope.
+  ///
+  /// Valid native replies are maps shaped as `{ accepted: true }` for success or
+  /// `{ accepted: false, error: { code: String, message: String, details?: Object } }`
+  /// for rejected or failed operations. An `accepted: true` envelope with an `error`
+  /// payload is contradictory and is converted into an [LocalPlayerErrorKind.invalidEnvelope]
+  /// failure instead of being accepted.
   factory LocalPlayerBridgeResult.fromMap(Object? value) {
     if (value is! Map) {
       return const LocalPlayerBridgeResult.failed(
@@ -168,7 +178,27 @@ final class LocalPlayerBridgeResult {
     }
 
     final accepted = value['accepted'];
-    if (accepted == true) return const LocalPlayerBridgeResult.accepted();
+    if (accepted == true) {
+      if (value.containsKey('error') && value['error'] != null) {
+        return const LocalPlayerBridgeResult.failed(
+          LocalPlayerBridgeException(
+            kind: LocalPlayerErrorKind.invalidEnvelope,
+            message:
+                'Native local player returned success with an error payload.',
+          ),
+        );
+      }
+      return const LocalPlayerBridgeResult.accepted();
+    }
+    if (accepted is! bool) {
+      return const LocalPlayerBridgeResult.failed(
+        LocalPlayerBridgeException(
+          kind: LocalPlayerErrorKind.invalidEnvelope,
+          message:
+              'Native local player reply is missing a boolean accepted field.',
+        ),
+      );
+    }
 
     return LocalPlayerBridgeResult.failed(
       _exceptionFromMap(
@@ -260,6 +290,12 @@ final class LocalPlayerSnapshot {
   }
 
   /// Parses a snapshot envelope from the EventChannel.
+  ///
+  /// Valid snapshot envelopes include `connectionStatus`, player/media labels,
+  /// `positionMs`, `trackLengthMs`, `volume`, queue bounds, and `isPlaying`. Failed or
+  /// unavailable snapshots should include an `error` payload. If native code omits that
+  /// payload for those failure statuses, this parser synthesizes a typed exception so
+  /// adapter subscribers still observe a visible failure instead of a normal state.
   factory LocalPlayerSnapshot.fromMap(Object? value) {
     if (value is! Map) {
       throw const LocalPlayerBridgeException(
@@ -273,6 +309,13 @@ final class LocalPlayerSnapshot {
         LocalPlayerConnectionStatus.values,
         _readString(value, 'connectionStatus'),
       );
+      final explicitError = value['error'] == null
+          ? null
+          : _exceptionFromMap(
+              value['error'],
+              fallbackKind: LocalPlayerErrorKind.failed,
+              fallbackMessage: 'Native local player reported an error.',
+            );
       return LocalPlayerSnapshot(
         connectionStatus: connectionStatus,
         playerName: _readString(value, 'playerName'),
@@ -286,13 +329,7 @@ final class LocalPlayerSnapshot {
         queueMinIndex: _readInt(value, 'queueMinIndex'),
         queueMaxIndex: _readInt(value, 'queueMaxIndex'),
         isPlaying: _readBool(value, 'isPlaying'),
-        error: value['error'] == null
-            ? null
-            : _exceptionFromMap(
-                value['error'],
-                fallbackKind: LocalPlayerErrorKind.failed,
-                fallbackMessage: 'Native local player reported an error.',
-              ),
+        error: explicitError ?? _synthesizeStatusError(connectionStatus),
       );
     } on LocalPlayerBridgeException {
       rethrow;
@@ -307,6 +344,10 @@ final class LocalPlayerSnapshot {
 }
 
 /// Fakeable native-local-player bridge used by [NativeLocalPlayerAdapter].
+///
+/// Implementations own lifecycle method calls, intent-level command envelopes, and the
+/// typed snapshot stream. They must not translate failures into demo state or expose raw
+/// transport/protocol command names to Flutter widgets.
 abstract interface class NativeLocalPlayerBridge {
   /// Typed snapshot stream emitted by the native local-player service.
   Stream<LocalPlayerSnapshot> get snapshots;
@@ -324,6 +365,12 @@ abstract interface class NativeLocalPlayerBridge {
 }
 
 /// MethodChannel/EventChannel implementation of the native local-player bridge.
+///
+/// Lifecycle and command requests are sent over `mass_mate/local_player`; snapshots are
+/// received from `mass_mate/local_player/snapshots`. Platform exceptions and malformed
+/// result or snapshot envelopes become typed bridge failures. The bridge sends only
+/// Mass Mate intent-level [LocalPlayerCommandEnvelope] values and does not implement or
+/// expose native transport, protocol, network, or audio behavior.
 final class MethodChannelNativeLocalPlayerBridge
     implements NativeLocalPlayerBridge {
   /// Creates the platform-channel bridge.
@@ -456,6 +503,26 @@ LocalPlayerBridgeException _exceptionFromMap(
     message: value['message']?.toString() ?? fallbackMessage,
     details: value['details'],
   );
+}
+
+LocalPlayerBridgeException? _synthesizeStatusError(
+  LocalPlayerConnectionStatus status,
+) {
+  return switch (status) {
+    LocalPlayerConnectionStatus.unavailable => const LocalPlayerBridgeException(
+        kind: LocalPlayerErrorKind.unavailable,
+        message:
+            'Native local player reported unavailable without error details.',
+      ),
+    LocalPlayerConnectionStatus.failed => const LocalPlayerBridgeException(
+        kind: LocalPlayerErrorKind.failed,
+        message: 'Native local player reported failure without error details.',
+      ),
+    LocalPlayerConnectionStatus.disconnected ||
+    LocalPlayerConnectionStatus.connecting ||
+    LocalPlayerConnectionStatus.connected =>
+      null,
+  };
 }
 
 LocalPlayerErrorKind _kindFromCode(String? code) {

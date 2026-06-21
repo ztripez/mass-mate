@@ -225,14 +225,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                 return Column(
                   children: [
-                    _ConnectionHeader(
-                      playerName: playerState.playerName,
-                      connectionLabel: playerState.connectionLabel,
+                    _ConnectionStatusBlock(
+                      playerState: playerState,
+                      playbackError: _playbackError,
                     ),
-                    if (_playbackError != null) ...[
-                      const SizedBox(height: 8),
-                      _PlaybackErrorBanner(message: _playbackError!),
-                    ],
                     const SizedBox(height: 20),
                     Expanded(
                       child: Row(
@@ -264,14 +260,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               return Column(
                 children: [
-                  _ConnectionHeader(
-                    playerName: playerState.playerName,
-                    connectionLabel: playerState.connectionLabel,
+                  _ConnectionStatusBlock(
+                    playerState: playerState,
+                    playbackError: _playbackError,
                   ),
-                  if (_playbackError != null) ...[
-                    const SizedBox(height: 8),
-                    _PlaybackErrorBanner(message: _playbackError!),
-                  ],
                   SizedBox(height: isCompactLayout ? 8 : 12),
                   Expanded(
                     child: _buildNowPlayingCard(
@@ -661,6 +653,35 @@ class _ConnectionHeader extends StatelessWidget {
           ),
         ),
         _StatusPill(icon: Icons.wifi_tethering, text: connectionLabel),
+      ],
+    );
+  }
+}
+
+class _ConnectionStatusBlock extends StatelessWidget {
+  const _ConnectionStatusBlock({
+    required this.playerState,
+    required this.playbackError,
+  });
+
+  final PlayerState playerState;
+  final String? playbackError;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = playbackError;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ConnectionHeader(
+          playerName: playerState.playerName,
+          connectionLabel: playerState.connectionLabel,
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          _PlaybackErrorBanner(message: error),
+        ],
       ],
     );
   }
