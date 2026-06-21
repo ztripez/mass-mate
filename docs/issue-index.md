@@ -9,5 +9,6 @@ This file is intentionally small and points to the GitHub tracker for the curren
 ## Contract docs
 
 - `docs/click-wheel-contract.md`
+- `docs/wheel-navigation-model.md`
 - `docs/music-assistant-wheel-matrix.md`
 - `docs/implementation-plan.md`

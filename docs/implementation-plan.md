@@ -5,6 +5,7 @@ This plan turns the wheel mapping matrix into implementation slices.
 Parent docs:
 
 - `docs/click-wheel-contract.md`
+- `docs/wheel-navigation-model.md`
 - `docs/music-assistant-wheel-matrix.md`
 
 ## Slice 1: Contract and resolver coverage
@@ -30,7 +31,7 @@ Parent docs:
 
 ## Slice 4: Wheel-native surfaces
 
-- Add output selector opened by MODE hold.
+- Add the screen/surface switcher opened by MODE hold, with Player Outputs as the path to output selection.
 - Add queue cursor surface using the matrix behavior.
 - Add lightweight playback options overlay for shuffle/repeat/favorite only after P0 playback is stable.
 - Add browse/search navigation after queue/output behavior is no longer moving.

@@ -4,6 +4,7 @@ Last researched: 2026-06-20
 
 This document maps Music Assistant functionality to the Mass Mate click-wheel control model.
 It extends `docs/click-wheel-contract.md`, which remains the lower-level interaction contract for the current prototype's ring/button behavior, haptics, accessibility, hit areas, and preview semantics.
+Screen and list navigation state is defined in `docs/wheel-navigation-model.md`; matrix rows that refer to browse, queue, output, or settings surfaces delegate their navigation stack behavior to that model.
 
 The goal is not to expose every Music Assistant feature through the wheel. The goal is to make the wheel the primary playback surface for mobile use, especially for long-form music, podcasts, and audiobooks where ordinary mobile sliders are painful.
 
@@ -15,8 +16,8 @@ Current prototype seek behavior intentionally differs from the target rows in th
 
 - Center in Seek mode commits an active preview; with no active preview, it cycles to the next wheel mode. The Music Assistant target may later use the no-preview center action for a precision toggle or seek options.
 - Left/right in Seek mode apply the same adaptive preview movement as wheel rotation. The Music Assistant target may later prefer chapter previous/next when chapter metadata exists, or a fixed relative skip such as +/-30 seconds when it does not.
-- Center in current Volume and Queue prototype modes cycles wheel mode. The Music Assistant target rows below reserve those center actions for mute/unmute and play-selected behavior after real playback integration exists.
-- Left/right in current Volume and Queue prototype modes apply the same small movement as wheel rotation. The Music Assistant target rows below reserve those buttons for previous/next transport in Volume mode and page movement in Queue mode.
+- Center in current Volume and Queue prototype modes cycles wheel mode. The Music Assistant target rows below reserve those center actions for mute/unmute and Queue screen/list selection after real playback integration exists.
+- Left/right in current Volume and Queue prototype modes apply the same small movement as wheel rotation. The Music Assistant target rows below reserve those buttons for previous/next transport in Volume mode and page movement in the Queue screen/list layer.
 
 Future implementation must update both this matrix and `docs/click-wheel-contract.md` when a target Music Assistant behavior becomes current prototype behavior.
 
@@ -43,14 +44,14 @@ Reference links:
 | Now Playing | Default playback surface | Global transport, mode status, current metadata, preview feedback |
 | Seek mode | Scrub current media | Duration-aware local preview, committed seek only on explicit commit |
 | Volume mode | Control active player or group volume | Continuous level adjustment, mute toggle |
-| Queue mode | Inspect and act on current queue | Cursor movement, play selected item, queue item actions |
+| Queue screen/list | Inspect and act on current queue | Queue Items list movement, play selected item, queue item actions |
 | Browse surface | Navigate library/search results | List navigation and item action sheet |
 | Output surface | Choose active player/output/group | List navigation and player action sheet |
 | Playback options overlay | Shuffle, repeat, radio continuation, favorite | Small option list with explicit toggles |
 
 ## Music Assistant target button mapping
 
-| Control | Global rule | Seek mode | Volume mode | Queue mode | Browse/output overlays |
+| Control | Global rule | Seek mode | Volume mode | Queue screen/list | Browse/output overlays |
 | --- | --- | --- | --- | --- | --- |
 | Ring | Adjust the focused scalar or list | Move seek preview target | Adjust volume | Move queue cursor | Move list cursor |
 | Center | Confirm/select, never surprise-mutate | Commit active preview; target behavior may use no-preview center for precision/options | Toggle mute | Play selected queue item | Open/select focused item |
@@ -58,7 +59,7 @@ Reference links:
 | Left/right | Transport unless local mode has stronger meaning | Target behavior: chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
 | Bottom | Always play/pause committed playback | Play/pause without committing preview | Play/pause | Play/pause current playback | Play/pause current playback |
 | Center hold | Open context actions | Seek options | Volume/output options | Queue item actions | Item/player actions |
-| MODE hold | Open global surface switcher | Now Playing / Browse / Queue / Output / Settings | Same | Same | Same |
+| MODE hold | Open global surface switcher / screen-level navigation | Use the primary screen order in `docs/wheel-navigation-model.md` | Same | Same | Same |
 | Left/right hold | Continuous transport or page repeat | Rewind/fast-forward preview | Previous/next repeat only if deliberate | Page repeat | Page repeat |
 | Bottom hold | Stop | Stop | Stop | Stop | Stop |
 
@@ -76,7 +77,7 @@ Reference links:
 | Mute | Volume mode | Adjust volume | Toggle mute | Cycle/back | Previous/next track | Play/pause | - | `players/cmd/volume_mute` or group mute equivalent | P0 |
 | Group volume | Volume mode with group active | Adjust group volume | Toggle group mute | Cycle/back | Previous/next track | Play/pause | Center hold = choose group vs member volume | `players/cmd/group_volume`, `group_volume_up/down`, `group_volume_mute` | P1 |
 | Power on/off player | Output surface | Scroll players/actions | Select/confirm | Back | Page players | Play/pause active queue | Center hold on player = actions | `players/cmd/power` | P1 |
-| Active queue navigation | Queue mode | Move queue cursor | Play selected item | Cycle/back | Page queue | Play/pause current item | Center hold = queue item actions | `player_queues/items`, `player_queues/play_index` or equivalent | P0 |
+| Active queue navigation | Queue screen / Queue Items list | Move queue cursor | Play selected item | Cycle/back | Page queue | Play/pause current item | Center hold = queue item actions | `player_queues/items`, `player_queues/play_index` or equivalent | P0 |
 | Remove queue item | Queue item actions | Scroll action list | Confirm remove | Back | - | Play/pause | Center hold on queue item | `player_queues/delete_item` | P1 |
 | Move queue item | Queue item actions | Move target position | Drop/confirm | Cancel | Page target | Play/pause | Center hold = queue item actions | `player_queues/move_item*` commands where available | P2 |
 | Clear queue | Queue header actions | Scroll actions | Confirm clear | Cancel | - | Play/pause | Center hold on queue header | `player_queues/clear` | P1 |
@@ -89,7 +90,7 @@ Reference links:
 | Search library | Search surface | Scroll results | Open selected result | Back | Page results | Play/pause current item | OS keyboard for query input; wheel navigates results | `music/search` or generated search command from `/api-docs` | P2 |
 | Play album / playlist / radio station | Browse surface | Scroll items | Open item by default | Back | Page | Play selected collection only when explicitly focused for play | Center hold = play now / add next / add later | Queue load/play-media command from `/api-docs` | P1 |
 | Add item to queue / play next | Item action sheet | Scroll actions | Confirm action | Back | - | Play/pause | Center hold on browsed item | Queue enqueue/play-next command from `/api-docs` | P1 |
-| Select active player/output | Output surface | Scroll players | Select active target | Back/cycle | Page players | Play/pause active target | MODE hold opens output selector globally | `players/*`, active queue lookup, selected player persistence | P0 |
+| Select active player/output | Output surface | Scroll players | Select active target | Back/cycle | Page players | Play/pause active target | MODE hold opens screen-level navigation; choose Player Outputs to select output target | `players/*`, active queue lookup, selected player persistence | P0 |
 | Transfer playback between players | Output surface | Scroll destination | Transfer to selected | Back | Page players | Play/pause current target | Center hold on player = transfer actions | Transfer queue/action command from `/api-docs` | P1 |
 | Join / unjoin group | Output actions | Scroll action list | Confirm | Back | - | Play/pause | Center hold on player/group | Player group/member commands from `/api-docs` | P2 |
 | Announcements / TTS | Notification/status only | - | - | Dismiss/back | - | Play/pause active playback | - | Home Assistant / MA announcement APIs, not wheel-primary | P3 |
