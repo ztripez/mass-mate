@@ -15,10 +15,4 @@ This file is intentionally small and points to the GitHub tracker for the curren
 - `docs/music-assistant-wheel-matrix.md` -- functionality matrix; use this for Music Assistant feature mapping, Mode behavior, context actions, strictness classes, adapter buckets, and priorities.
 - `docs/implementation-plan.md` -- staged integration plan for turning the matrix into implementation slices.
 
-## Wheel UX rules
-
-- Use Mode, not Menu, for the wheel behavior switch.
-- Keep screen navigation, list navigation, and Mode behavior as separate layers.
-- Treat playback and frequent session actions as strict wheel-first flows.
-- Treat output selection, grouping, providers, and settings/admin as relaxed setup/admin flows when clearer.
-- Prioritize playback, queue, seeking, volume, and browsing before optimizing low-frequency configuration.
+For wheel UX rules, use the contract docs listed above instead of duplicating their guidance here.

@@ -46,7 +46,8 @@ Treat the contract docs as product constraints. If implementation behavior confl
 - Use Mode, not Menu, for the wheel behavior switch. `WheelMode` is playback/control behavior, not screen navigation, list navigation, or output selection.
 - Keep screen navigation and list navigation separate. Screen-level wheel movement chooses primary app surfaces; list-level wheel movement moves focused rows inside the active screen.
 - Use `docs/wheel-ux-strictness.md` before designing a flow. Playback, seek, volume, transport, queue, and frequent session actions are strict wheel-first flows.
-- Treat output selection, player grouping, provider setup, settings, diagnostics, authentication, and admin tasks as relaxed setup/admin flows when conventional UI is clearer and safer.
+- Treat output selection, player grouping, and provider setup as relaxed setup/configuration flows when conventional UI is clearer and safer.
+- Treat diagnostics, authentication, discovery, server configuration, provider administration, and other settings/admin tasks as normal app UI unless a future contract promotes a specific action into a wheel-first flow.
 - Do not spend complexity optimizing low-frequency configuration before playback, queue, seeking, volume, and browsing are solid.
 - Queue/playback preview is local-first: do not emit remote seek commands for every wheel tick; remote seek belongs on explicit commit.
 - Bottom play/pause and transport actions must never silently commit an active seek preview.
