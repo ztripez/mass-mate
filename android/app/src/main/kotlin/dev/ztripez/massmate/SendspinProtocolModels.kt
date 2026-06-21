@@ -8,8 +8,7 @@ package dev.ztripez.massmate
  * @property positionMs Optional committed playback position in milliseconds. `null` means omitted
  * and must not clear previous native state by itself.
  * @property durationMs Optional media duration in milliseconds; `null` means unknown or omitted.
- * @property volume Optional normalized volume; `null` means omitted and is not mapped to Dart in
- * issue #27.
+ * @property volume Optional normalized volume; `null` means omitted and is not mapped to Dart here.
  */
 data class SendspinServerState(
     val playbackState: String,
@@ -22,7 +21,7 @@ data class SendspinServerState(
  * Media metadata parsed from native Sendspin protocol.
  *
  * Optional `null` properties mean the field was omitted, not that known UI metadata should be
- * erased. Snapshot bridge mapping is deferred to issue #33.
+ * erased. Snapshot bridge mapping is owned by a later native-to-Dart mapping slice.
  */
 data class SendspinMetadata(
     val title: String? = null,
@@ -75,9 +74,16 @@ data class SendspinStreamEnd(
 
 /** Raw server command names parsed as protocol descriptors without Flutter intent mapping. */
 enum class SendspinServerCommandKind(val wireValue: String) {
+    /** Server requests playback start; Flutter intent mapping is not performed here. */
     PLAY("play"),
+
+    /** Server requests playback pause; Flutter intent mapping is not performed here. */
     PAUSE("pause"),
+
+    /** Server requests an absolute seek; Flutter intent mapping is not performed here. */
     SEEK_TO("seekTo"),
+
+    /** Server requests a volume change; Flutter intent mapping is not performed here. */
     SET_VOLUME("setVolume"),
 }
 

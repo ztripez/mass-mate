@@ -2,7 +2,12 @@ package dev.ztripez.massmate
 
 import org.json.JSONObject
 
-/** Parses and dispatches post-handshake Sendspin text protocol messages. */
+/**
+ * Parses and dispatches post-handshake Sendspin text protocol messages.
+ *
+ * @param logger Native logger for unknown message types and diagnostic event sinks.
+ * @param events Native callback sink that owns supported parsed message families.
+ */
 class SendspinProtocolDispatcher(
     private val logger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
     private val events: SendspinProtocolEvents = FailHardSendspinProtocolEvents(logger),

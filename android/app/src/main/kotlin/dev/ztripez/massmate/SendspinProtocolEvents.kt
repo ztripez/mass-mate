@@ -29,7 +29,7 @@ interface SendspinProtocolEvents {
     /** Handoff for server playback/state [state]; direct Flutter UI consumption is forbidden. */
     fun onServerState(state: SendspinServerState)
 
-    /** Handoff for server media [metadata]; Dart snapshot mapping remains deferred to #33. */
+    /** Handoff for server media [metadata]; Dart snapshot mapping remains owned by a later slice. */
     fun onMetadata(metadata: SendspinMetadata)
 
     /** Handoff for validated stream [stream] start descriptors; buffering/audio are deferred. */
@@ -41,17 +41,21 @@ interface SendspinProtocolEvents {
     /** Handoff for validated stream end [stream] descriptors; audio teardown is deferred. */
     fun onStreamEnd(stream: SendspinStreamEnd)
 
-    /** Handoff for raw server [command] events; Flutter intent mapping remains deferred to #32. */
+    /** Handoff for raw server [command] events; Flutter intent mapping is not performed here. */
     fun onServerCommand(command: SendspinServerCommand)
 
-    /** Handoff for diagnostic server [status] messages that do not update UI state in #27. */
+    /** Handoff for diagnostic server [status] messages that do not update UI state here. */
     fun onServerStatus(status: SendspinServerStatus)
 
     /** Handoff for parsed server [error] details before dispatch fails the active session. */
     fun onServerProtocolError(error: SendspinServerProtocolError)
 }
 
-/** Production event sink for known families that have no native owner in issue #27. */
+/**
+ * Production event sink for known families that have no native owner yet.
+ *
+ * @param logger Native logger used for non-fatal state, metadata, status, and error diagnostics.
+ */
 class FailHardSendspinProtocolEvents(
     private val logger: SendspinProtocolLogger,
 ) : SendspinProtocolEvents {

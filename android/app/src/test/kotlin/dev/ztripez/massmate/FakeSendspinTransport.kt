@@ -2,7 +2,12 @@ package dev.ztripez.massmate
 
 import java.net.URI
 
-/** Fake text transport for deterministic hello/goodbye, dispatch, and stale-callback tests. */
+/**
+ * Fake text transport for deterministic hello/goodbye, dispatch, and stale-callback tests.
+ *
+ * @param throwOnSendContaining Optional text fragment that makes [sendText] throw when matched.
+ * @param throwOnClose Whether [close] should throw instead of recording close state.
+ */
 class FakeSendspinTransport(
     private val throwOnSendContaining: String? = null,
     private val throwOnClose: Boolean = false,

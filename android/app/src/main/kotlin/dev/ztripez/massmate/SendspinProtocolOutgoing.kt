@@ -21,9 +21,9 @@ enum class SendspinClientConnectionState(val wireValue: String) {
  * Minimal local-player state sent after a validated handshake.
  *
  * @property connectionState Required native connection state to serialize.
- * @property isPlaying Required playback flag. Issue #27 sends `false` because playback is deferred.
- * @property streamActive Required stream flag. Issue #27 sends `false` because buffering is deferred.
- * @property audioOutputActive Required audio flag. Issue #27 sends `false` because audio is deferred.
+ * @property isPlaying Required playback flag. This serializer sends `false` until playback exists.
+ * @property streamActive Required stream flag. This serializer sends `false` until buffering exists.
+ * @property audioOutputActive Required audio flag. This serializer sends `false` until audio exists.
  */
 data class SendspinClientState(
     val connectionState: SendspinClientConnectionState,
@@ -39,21 +39,21 @@ data class SendspinClientState(
         .put("audioOutputActive", audioOutputActive)
 
     companion object {
-        /** Initial state for issue #27: connected/ready, idle, no stream or audio claims. */
+        /** Initial connected/ready state that does not claim playback, stream, or audio activity. */
         fun initialReady(): SendspinClientState = SendspinClientState(SendspinClientConnectionState.READY)
     }
 }
 
 /** Native time-sync statuses serialized through `client/time` without implementing clock sync. */
 enum class SendspinClientTimeStatus(val wireValue: String) {
-    /** Clock sync is intentionally unavailable until issue #28 owns it. */
+    /** Clock sync is intentionally unavailable until native time synchronization exists. */
     UNAVAILABLE("unavailable"),
 }
 
 /**
  * Native-only `client/time` serializer for pre-clock-sync diagnostics.
  *
- * @property status Required time-sync status. Issue #27 only serializes [UNAVAILABLE].
+ * @property status Required time-sync status. This serializer only publishes [UNAVAILABLE].
  * @property reason Required diagnostic reason; it is not synchronized clock quality.
  */
 data class SendspinClientTime(
@@ -76,9 +76,16 @@ data class SendspinClientTime(
 
 /** Raw native command names serializable through `client/command`; not Flutter intent mapping. */
 enum class SendspinClientCommandKind(val wireValue: String) {
+    /** Raw native protocol command for play. */
     PLAY("play"),
+
+    /** Raw native protocol command for pause. */
     PAUSE("pause"),
+
+    /** Raw native protocol command for absolute seek. */
     SEEK_TO("seekTo"),
+
+    /** Raw native protocol command for absolute volume. */
     SET_VOLUME("setVolume"),
 }
 
@@ -86,7 +93,7 @@ enum class SendspinClientCommandKind(val wireValue: String) {
  * Typed `client/command` protocol serializer.
  *
  * This builder exists for native Sendspin protocol shapes only. It is not wired to Flutter
- * `PlaybackIntent`, wheel preview, or command execution; that mapping remains issue #32.
+ * `PlaybackIntent`, wheel preview, or command execution; that mapping is owned by a later slice.
  *
  * @property command Required raw native protocol command to serialize.
  * @property requestId Optional native request identifier.
