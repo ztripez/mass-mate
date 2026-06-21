@@ -15,6 +15,8 @@ The click-wheel product contract is documented in [docs/click-wheel-contract.md]
 
 The wheel navigation model is documented in [docs/wheel-navigation-model.md](docs/wheel-navigation-model.md). Treat it as the source of truth for how the wheel moves between primary screens and inside nested lists.
 
+Wheel UX strictness is documented in [docs/wheel-ux-strictness.md](docs/wheel-ux-strictness.md). Treat it as the source of truth for whether a flow needs strict wheel-first ergonomics or can use relaxed setup/admin UI.
+
 The Music Assistant functionality mapping is documented in [docs/music-assistant-wheel-matrix.md](docs/music-assistant-wheel-matrix.md). Treat it as the source of truth for which Music Assistant features belong on the wheel, which are context actions, and which should stay out of the primary mobile playback path.
 
 ## Getting started
