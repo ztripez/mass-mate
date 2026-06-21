@@ -43,97 +43,72 @@ Reference links:
 
 | Surface | Purpose | Wheel role |
 | --- | --- | --- |
-| Now Playing | Default playback surface | Global transport, mode status, current metadata, preview feedback |
-| Seek mode | Scrub current media | Duration-aware local preview, committed seek only on explicit commit |
-| Volume mode | Control active player or group volume | Continuous level adjustment, mute toggle |
-| Queue screen/list | Inspect and act on current queue | Queue Items list movement, play selected item, queue item actions |
+| Screen-level navigation | Choose among Now Playing, Queue, Library, Search, Player Outputs, and Settings | Long-MODE opens the global surface switcher; rotation changes only the screen candidate until center/select confirms |
+| List-level navigation | Move inside the focused list owned by the active screen | Rotation changes row focus and scroll only; center/select opens or selects rows; Back/MODE exits according to `docs/wheel-navigation-model.md` |
+| Now Playing | Default playback surface | Global transport, active Mode status, current metadata, preview feedback |
+| Seek Mode | Scrub current media | Duration-aware local preview, committed seek only on explicit commit |
+| Volume Mode | Control active player or group volume | Continuous level adjustment, mute toggle |
+| Queue screen / Queue Items list | Inspect and act on current queue | Queue Items list movement, play selected item, queue item actions |
 | Browse surface | Navigate library/search results | List navigation and item action sheet |
-| Output surface | Choose active player/output/group | List navigation and player action sheet |
+| Player Outputs surface | Choose active player, speaker, output, or group | Relaxed setup list navigation and player/group action sheets |
 | Playback options overlay | Shuffle, repeat, radio continuation, favorite | Small option list with explicit toggles |
 
 ## UX strictness application
 
-`docs/wheel-ux-strictness.md` is the canonical taxonomy for the strictness classes named here. This matrix only applies those class names to feature rows so the detailed class meanings stay in one place.
+`docs/wheel-ux-strictness.md` is the canonical taxonomy for the strictness classes named in the main matrix. This document applies class names only; it does not redefine their expectations.
 
-| Music Assistant function row | UX strictness class |
-| --- | --- |
-| Play / pause | Immediate playback |
-| Stop | Immediate playback |
-| Previous / next track | Immediate playback |
-| Audiobook / podcast chapter movement | Immediate playback |
-| Scrub current track | Immediate playback |
-| Fine/coarse seek precision | Immediate playback |
-| Volume | Immediate playback |
-| Mute | Immediate playback |
-| Group volume | Immediate playback |
-| Power on/off player | Configuration/session setup |
-| Active queue navigation | Frequent session controls |
-| Remove queue item | Frequent session controls |
-| Move queue item | Frequent session controls |
-| Clear queue | Frequent session controls |
-| Save queue as playlist | Frequent session controls |
-| Shuffle | Frequent session controls |
-| Repeat | Frequent session controls |
-| Radio continuation / don't stop the music | Frequent session controls |
-| Favorite current item | Frequent session controls |
-| Browse library | Browsing/navigation |
-| Search library | Browsing/navigation |
-| Play album / playlist / radio station | Browsing/navigation |
-| Add item to queue / play next | Frequent session controls |
-| Select active player/output | Configuration/session setup |
-| Transfer playback between players | Configuration/session setup |
-| Join / unjoin group | Configuration/session setup |
-| Announcements / TTS | Settings/admin |
-| Metadata refresh / admin actions | Settings/admin |
-| Authentication / server discovery | Settings/admin |
+Every feature/capability row below has a UX strictness class. Future implementation issues should treat that row as the source of truth for whether a capability needs very strict wheel-first behavior, strict session behavior, medium browsing behavior, relaxed setup behavior, or ordinary settings/admin UI.
 
 ## Music Assistant target button mapping
 
-| Control | Global rule | Seek mode | Volume mode | Queue screen/list | Browse/output overlays |
-| --- | --- | --- | --- | --- | --- |
-| Ring | Adjust the focused scalar or list | Move seek preview target | Adjust volume | Move queue cursor | Move list cursor |
-| Center | Confirm/select, never surprise-mutate | Commit active preview; target behavior may use no-preview center for precision/options | Toggle mute | Play selected queue item | Open/select focused item |
-| MODE/top | Back first, mode-cycle second | Cancel preview and cycle mode when on Now Playing | Cycle mode when on Now Playing | Cycle mode when on Now Playing | Back/up |
-| Left/right | Transport unless local mode has stronger meaning | Target behavior: chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
-| Bottom | Always play/pause committed playback | Play/pause without committing preview | Play/pause | Play/pause current playback | Play/pause current playback |
-| Center hold | Open context actions | Seek options | Volume/output options | Queue item actions | Item/player actions |
-| MODE hold | Open global surface switcher / screen-level navigation | Use the primary screen order in `docs/wheel-navigation-model.md` | Same | Same | Same |
-| Left/right hold | Continuous transport or page repeat | Rewind/fast-forward preview | Previous/next repeat only if deliberate | Page repeat | Page repeat |
-| Bottom hold | Stop | Stop | Stop | Stop | Stop |
+| Control | Global rule | Screen navigation | List navigation | Seek Mode | Volume Mode | Queue screen/list | Browse/output overlays |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Ring | Adjust the focused scalar or list only | Move `screenCandidate`; no playback or list mutation | Move focused row/scroll offset | Move seek preview target | Adjust volume | Move queue cursor | Move list cursor |
+| Center | Confirm/select, never surprise-mutate | Activate candidate and enter its default list when applicable | Open/select focused row | Commit active preview; target behavior may use no-preview center for precision/options | Toggle mute | Play selected queue item | Open/select focused item |
+| MODE/top | Back first, mode-cycle second | Change active Mode only; do not change screen candidate | Exit to owning screen context and preserve list stack | Cancel preview and cycle Mode when on Now Playing | Cycle Mode when on Now Playing | Cycle Mode when on Now Playing | Back/up |
+| Left/right | Transport unless local context has stronger meaning | Transport still uses active Mode/global semantics | Page list when supported | Target behavior: chapter previous/next, else +/-30s preview | Previous/next track | Page queue | Page list / alpha jump |
+| Bottom | Always play/pause committed playback | Play/pause committed playback | Play/pause current playback | Play/pause without committing preview | Play/pause | Play/pause current playback | Play/pause current playback |
+| Center hold | Open context actions | Screen-level actions for candidate/active screen | Focused item actions | Seek options | Volume/output options | Queue item actions | Item/player actions |
+| MODE hold | Open global surface switcher / screen-level navigation | Keep screen-level navigation active | Return to screen-level navigation; preserve list stack | Use the primary screen order in `docs/wheel-navigation-model.md` | Same | Same | Same |
+| Left/right hold | Continuous transport or page repeat | Transport repeat only if deliberate | Page repeat | Rewind/fast-forward preview | Previous/next repeat only if deliberate | Page repeat | Page repeat |
+| Bottom hold | Stop | Stop | Stop | Stop | Stop | Stop | Stop |
 
 ## Functionality matrix
 
-| Music Assistant function | Surface / mode | Ring rotation | Center | MODE / top | Left / right | Bottom | Long press / secondary | MA integration target | Priority |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Play / pause | Global | No-op | Mode-specific | Back/cycle | Mode-specific | Toggle play/pause | Hold bottom = stop | `player_queues/play_pause` or `players/cmd/play_pause` | P0 |
-| Stop | Global | No-op | - | - | - | - | Hold bottom | `player_queues/stop` or `players/cmd/stop` | P1 |
-| Previous / next track | Global transport | No-op | - | - | Previous / next | Play/pause | Hold left/right = rewind/fast-forward or repeated skip | `player_queues/previous`, `player_queues/next`, or `players/cmd/*` equivalents | P0 |
-| Audiobook / podcast chapter movement | Seek mode | Move seek preview | Commit preview | Cancel preview + cycle/back | Chapter prev/next if chapter data exists, else +/-30s preview | Play/pause, no preview commit | Hold left/right = continuous seek preview | `player_queues/seek`, `players/cmd/seek`, or relative skip support when available | P0 |
-| Scrub current track | Seek mode | Move preview target | Commit preview | Cancel preview + cycle/back | +/-30s or chapter movement | Play/pause, no preview commit | Center hold = precision/options | `player_queues/seek(position)` or `players/cmd/seek(position)` | P0 |
-| Fine/coarse seek precision | Seek mode | Uses active precision | Target behavior: toggle precision when no preview is active | Cycle/back | Uses active precision | Play/pause | Center hold = seek options | Local resolver only until commit | P0 |
-| Volume | Volume mode | Adjust volume | Toggle mute | Cycle/back | Previous/next track | Play/pause | Center hold = volume/output options | `players/cmd/volume_set`, `volume_up`, `volume_down` | P0 |
-| Mute | Volume mode | Adjust volume | Toggle mute | Cycle/back | Previous/next track | Play/pause | - | `players/cmd/volume_mute` or group mute equivalent | P0 |
-| Group volume | Volume mode with group active | Adjust group volume | Toggle group mute | Cycle/back | Previous/next track | Play/pause | Center hold = choose group vs member volume | `players/cmd/group_volume`, `group_volume_up/down`, `group_volume_mute` | P1 |
-| Power on/off player | Output surface | Scroll players/actions | Select/confirm | Back | Page players | Play/pause active queue | Center hold on player = actions | `players/cmd/power` | P1 |
-| Active queue navigation | Queue screen / Queue Items list | Move queue cursor | Play selected item | Cycle/back | Page queue | Play/pause current item | Center hold = queue item actions | `player_queues/items`, `player_queues/play_index` or equivalent | P0 |
-| Remove queue item | Queue item actions | Scroll action list | Confirm remove | Back | - | Play/pause | Center hold on queue item | `player_queues/delete_item` | P1 |
-| Move queue item | Queue item actions | Move target position | Drop/confirm | Cancel | Page target | Play/pause | Center hold = queue item actions | `player_queues/move_item*` commands where available | P2 |
-| Clear queue | Queue header actions | Scroll actions | Confirm clear | Cancel | - | Play/pause | Center hold on queue header | `player_queues/clear` | P1 |
-| Save queue as playlist | Queue header actions | Scroll actions | Confirm, then text input | Cancel | - | Play/pause | Center hold on queue header | `player_queues/save_as_playlist` | P2 |
-| Shuffle | Playback options overlay | Scroll options | Toggle shuffle | Back | - | Play/pause | Center hold from Now Playing | `player_queues/shuffle` | P1 |
-| Repeat | Playback options overlay | Scroll options | Cycle repeat mode | Back | - | Play/pause | Center hold from Now Playing | `player_queues/repeat` | P1 |
-| Radio continuation / don't stop the music | Playback options overlay | Scroll options | Toggle | Back | - | Play/pause | Center hold from Now Playing | `player_queues/dont_stop_the_music` when provider supports it | P2 |
-| Favorite current item | Playback options overlay | Scroll options | Toggle/add favorite | Back | - | Play/pause | Center hold from Now Playing | `music/favorites/add_item` and matching remove/status commands from `/api-docs` | P1 |
-| Browse library | Browse surface | Scroll list | Open selected item or play leaf | Back/up | Page or alpha jump | Play/pause current item | Center hold = item actions | `music/*` browse/search/details commands from `/api-docs` | P1 |
-| Search library | Search surface | Scroll results | Open selected result | Back | Page results | Play/pause current item | OS keyboard for query input; wheel navigates results | `music/search` or generated search command from `/api-docs` | P2 |
-| Play album / playlist / radio station | Browse surface | Scroll items | Open item by default | Back | Page | Play selected collection only when explicitly focused for play | Center hold = play now / add next / add later | Queue load/play-media command from `/api-docs` | P1 |
-| Add item to queue / play next | Item action sheet | Scroll actions | Confirm action | Back | - | Play/pause | Center hold on browsed item | Queue enqueue/play-next command from `/api-docs` | P1 |
-| Select active player/output | Output surface | Scroll players | Select active target | Back/cycle | Page players | Play/pause active target | MODE hold opens screen-level navigation; choose Player Outputs to select output target | `players/*`, active queue lookup, selected player persistence | P0 |
-| Transfer playback between players | Output surface | Scroll destination | Transfer to selected | Back | Page players | Play/pause current target | Center hold on player = transfer actions | Transfer queue/action command from `/api-docs` | P1 |
-| Join / unjoin group | Output actions | Scroll action list | Confirm | Back | - | Play/pause | Center hold on player/group | Player group/member commands from `/api-docs` | P2 |
-| Announcements / TTS | Notification/status only | - | - | Dismiss/back | - | Play/pause active playback | - | Home Assistant / MA announcement APIs, not wheel-primary | P3 |
-| Metadata refresh / admin actions | Not wheel-primary | - | - | Back only | - | Play/pause | Touch/settings surface only | `music/sync`, metadata refresh commands | P3 |
-| Authentication / server discovery | Setup surface | Scroll server list | Connect/select | Back | - | - | - | Auth token setup, server discovery, connection persistence | P0 infra |
+| Feature / capability | Screen context | List context | Wheel Mode | Rotate behavior | Center behavior | Back behavior | Long-press behavior | UX strictness | Notes / non-goals | MA integration target | Priority |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Screen navigation | Global surface switcher from any screen | None | Active Mode is preserved, not changed | Move screen candidate only | Activate candidate; enter default list or clear navigation focus on Now Playing | Cancel candidate or return through screen history per navigation model | MODE hold enters/keeps screen navigation | Browsing/navigation | Delegates stack/history details to `docs/wheel-navigation-model.md`; no playback, queue, output, or Mode mutation by itself | Local navigation state only | P1 |
+| List navigation | Queue, Library, Search, Player Outputs | Active screen's focused list frame | Active Mode is preserved while list captures wheel input | Move focused row/scroll only | Open/select focused row through explicit intent | Pop child frame or exit to screen context per navigation model | Center hold opens item actions; MODE hold returns to screen navigation | Browsing/navigation | Delegates nested stack and invalidated-focus rules to `docs/wheel-navigation-model.md`; concrete row actions remain separate feature rows | Local navigation state + list data adapters | P1 |
+| Mode behavior switch | Now Playing and any context where navigation is not consuming MODE | None | Seek, Volume, Queue | Rotation continues to use the active Mode when navigation layer is `none` | Mode-specific; current prototype cycles Mode only where documented | MODE/back cancels seek preview before changing state | Long-MODE is screen navigation, not a Mode picker | Immediate playback | Use Mode terminology. Mode switching changes wheel behavior only; it is not screen/list navigation and not output selection. | Local resolver state only | P0 |
+| Play / pause | Global, especially Now Playing | None | Any | No-op | Mode-specific | Back/cycle as current context defines | Hold bottom = stop | Immediate playback | Bottom play/pause toggles committed playback and must not commit active seek preview | `player_queues/play_pause` or `players/cmd/play_pause` | P0 |
+| Stop | Global | None | Any | No-op | - | - | Hold bottom | Immediate playback | Secondary transport; keep out of accidental center/select paths | `player_queues/stop` or `players/cmd/stop` | P1 |
+| Previous / next track | Global transport | None | Any, Volume target uses transport buttons directly | No-op | - | - | Hold left/right = rewind/fast-forward or repeated skip | Immediate playback | Immediate skip/transport must stay wheel/button-first and not require screen hops | `player_queues/previous`, `player_queues/next`, or `players/cmd/*` equivalents | P0 |
+| Audiobook / podcast chapter movement | Now Playing | None | Seek | Move seek preview | Commit preview | Cancel preview + cycle/back | Hold left/right = continuous seek preview | Immediate playback | Chapter movement falls back to relative skip when chapter data is absent | `player_queues/seek`, `players/cmd/seek`, or relative skip support when available | P0 |
+| Scrub current track | Now Playing | None | Seek | Move preview target | Commit preview | Cancel preview + cycle/back | Center hold = precision/options | Immediate playback | Preview remains local; remote seek emits only on explicit commit | `player_queues/seek(position)` or `players/cmd/seek(position)` | P0 |
+| Fine/coarse seek precision | Now Playing | None | Seek | Uses active precision | Target behavior: toggle precision when no preview is active | Cycle/back | Center hold = seek options | Immediate playback | Resolver-local until a committed seek is emitted | Local resolver only until commit | P0 |
+| Volume | Now Playing | None | Volume | Adjust volume | Toggle mute | Cycle/back | Center hold = volume/output options | Immediate playback | Immediate active-target volume control; do not route through setup flows | `players/cmd/volume_set`, `volume_up`, `volume_down` | P0 |
+| Mute | Now Playing | None | Volume | Adjust volume | Toggle mute | Cycle/back | - | Immediate playback | Immediate active-target mute; may share Volume Mode center behavior | `players/cmd/volume_mute` or group mute equivalent | P0 |
+| Group volume | Now Playing with group active | None | Volume | Adjust active group volume | Toggle group mute | Cycle/back | Center hold = choose group vs member volume | Immediate playback | Active group volume remains immediate playback; group membership editing is a relaxed setup flow below | `players/cmd/group_volume`, `group_volume_up/down`, `group_volume_mute` | P1 |
+| Active queue navigation | Queue screen | Queue Items | Queue, or list layer once implemented | Move queue cursor | Play selected item | Cycle/back or list-root exit per navigation model | Center hold = queue item actions | Frequent session controls | Queue actions are strict session controls, not relaxed setup | `player_queues/items`, `player_queues/play_index` or equivalent | P0 |
+| Remove queue item | Queue screen | Queue item actions | Queue/list action layer | Scroll action list | Confirm remove | Back | Center hold on queue item | Frequent session controls | Mutating queue action requires explicit confirm semantics | `player_queues/delete_item` | P1 |
+| Move queue item | Queue screen | Queue item actions | Queue/list action layer | Move target position | Drop/confirm | Cancel | Center hold = queue item actions | Frequent session controls | Queue reorder is strict session behavior even if lower priority | `player_queues/move_item*` commands where available | P2 |
+| Clear queue | Queue screen | Queue header actions | Queue/list action layer | Scroll actions | Confirm clear | Cancel | Center hold on queue header | Frequent session controls | Destructive action; never one-press from normal queue navigation | `player_queues/clear` | P1 |
+| Save queue as playlist | Queue screen | Queue header actions | Queue/list action layer | Scroll actions | Confirm, then text input | Cancel | Center hold on queue header | Frequent session controls | Text entry can use ordinary platform input after explicit queue action selection | `player_queues/save_as_playlist` | P2 |
+| Shuffle | Now Playing | Playback options overlay | Any | Scroll options | Toggle shuffle | Back | Center hold from Now Playing | Frequent session controls | Session playback option; keep reachable without setup screens | `player_queues/shuffle` | P1 |
+| Repeat | Now Playing | Playback options overlay | Any | Scroll options | Cycle repeat mode | Back | Center hold from Now Playing | Frequent session controls | Session playback option; keep reachable without setup screens | `player_queues/repeat` | P1 |
+| Radio continuation / don't stop the music | Now Playing | Playback options overlay | Any | Scroll options | Toggle | Back | Center hold from Now Playing | Frequent session controls | Provider-dependent option; keep explicit and reversible | `player_queues/dont_stop_the_music` when provider supports it | P2 |
+| Favorite current item | Now Playing | Playback options overlay | Any | Scroll options | Toggle/add favorite | Back | Center hold from Now Playing | Frequent session controls | Favorite for current item belongs with session controls | `music/favorites/add_item` and matching remove/status commands from `/api-docs` | P1 |
+| Browse library | Library | Library root/Artists/Albums/Tracks/Playlists/Browse Folder | Navigation captures wheel input | Scroll list | Open selected item or play/open leaf via explicit action | Back/up per navigation model | Center hold = item actions | Browsing/navigation | Wheel owns list movement once browsing is on screen; deep browse can use ordinary mobile affordances | `music/*` browse/search/details commands from `/api-docs` | P1 |
+| Search library | Search | Search Results | Navigation captures wheel input | Scroll results | Open selected result | Back per navigation model | OS keyboard for query input; wheel navigates results | Browsing/navigation | Query entry is not wheel-primary; result navigation is wheel-driven | `music/search` or generated search command from `/api-docs` | P2 |
+| Play album / playlist / radio station | Library/Search | Collection or result list | Navigation captures wheel input | Scroll items | Open item by default | Back | Center hold = play now / add next / add later | Browsing/navigation | Playing a collection requires explicit focused play action; bottom remains current playback play/pause | Queue load/play-media command from `/api-docs` | P1 |
+| Add item to queue / play next | Library/Search | Item action sheet | Navigation captures wheel input | Scroll actions | Confirm action | Back | Center hold on browsed item | Frequent session controls | Queue mutation from browse remains a strict session action with explicit confirmation | Queue enqueue/play-next command from `/api-docs` | P1 |
+| Select active player/output | Player Outputs | Available Speakers / Groups | Navigation captures wheel input | Scroll outputs | Select active target | Back per navigation model | MODE hold opens screen navigation; choose Player Outputs to select output target | Configuration/session setup | Relaxed setup flow. Reachable and safe, but not optimized like playback, seek, volume, or queue. | `players/*`, active queue lookup, selected player persistence | P0 |
+| Transfer playback between players | Player Outputs | Available Speakers / Groups | Navigation captures wheel input | Scroll destination | Transfer to selected | Back | Center hold on player = transfer actions | Configuration/session setup | Relaxed setup flow with explicit destination confirmation | Transfer queue/action command from `/api-docs` | P1 |
+| Join / unjoin speaker group | Player Outputs | Groups / speaker action sheet | Navigation captures wheel input | Scroll action list or group members | Confirm grouping change | Back | Center hold on player/group | Configuration/session setup | Relaxed setup/configuration flow; group membership editing must not consume immediate playback UX budget | Player group/member commands from `/api-docs` | P2 |
+| Power on/off player | Player Outputs | Player action sheet | Navigation captures wheel input | Scroll players/actions | Select/confirm | Back | Center hold on player = actions | Configuration/session setup | Relaxed setup flow; power action must be explicit and safe | `players/cmd/power` | P1 |
+| Announcements / TTS | Notification/status only | None | None | - | - | Dismiss/back | - | Settings/admin | Not wheel-primary; playback controls remain available where safe | Home Assistant / MA announcement APIs, not wheel-primary | P3 |
+| Metadata refresh / admin actions | Settings | Settings/admin rows if implemented | None | Standard settings navigation | Confirm explicit admin action | Back only | Touch/settings surface only | Settings/admin | Keep out of the primary wheel playback path | `music/sync`, metadata refresh commands | P3 |
+| Authentication / server discovery | Setup / Settings | Server list if implemented | None | Scroll server list | Connect/select | Back | - | Settings/admin | Infrastructure required for playback, but not a wheel-first interaction | Auth token setup, server discovery, connection persistence | P0 infra |
 
 ## Priority definitions
 
@@ -164,6 +139,9 @@ Expose intent-level operations instead:
 | `queueAction(target, item, action)` | delete/move/clear/save/shuffle/repeat commands |
 | `listPlayers()` | player registry command from `/api-docs` |
 | `selectTarget(playerOrQueue)` | local selected-target state + active queue lookup |
+| `transferPlayback(source, destination)` | player or queue transfer command from `/api-docs` |
+| `setPlayerPower(player, powered)` | `players/cmd/power` |
+| `updateGroupMembership(group, members)` | player group/member commands from `/api-docs` |
 | `browse(queryOrPath)` | generated `music/*` commands |
 
 ## Implementation notes
@@ -173,7 +151,7 @@ Expose intent-level operations instead:
 - Keep seek preview local. Do not emit remote seek commands for every wheel tick.
 - Bottom play/pause must never commit an active seek preview.
 - MODE/back must cancel active seek preview without committing it.
-- Every destructive or high-impact action from a context menu needs explicit center-confirm semantics.
+- Every destructive or high-impact action from an action sheet needs explicit center-confirm semantics.
 - Browse/search may use touch text input for query entry. The wheel owns result navigation, selection, and item actions.
 - Generated `/api-docs` from the user's actual Music Assistant server is the source of truth for final command names and schemas.
 
