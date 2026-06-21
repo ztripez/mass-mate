@@ -8,6 +8,8 @@ Screen and list navigation state is defined in `docs/wheel-navigation-model.md`;
 
 The goal is not to expose every Music Assistant feature through the wheel. The goal is to make the wheel the primary playback surface for mobile use, especially for long-form music, podcasts, and audiobooks where ordinary mobile sliders are painful.
 
+Wheel UX strictness is documented in `docs/wheel-ux-strictness.md`. That classification is part of this matrix: backend priority does not mean every surface should receive the same one-handed, rapid-use wheel optimization.
+
 ## Prototype versus Music Assistant target
 
 `docs/click-wheel-contract.md` is the source of truth for current prototype behavior. The matrix below describes the intended Music Assistant-integrated target when Music Assistant playback, chapter metadata, relative skip commands, precision options, and overlays exist.
@@ -48,6 +50,42 @@ Reference links:
 | Browse surface | Navigate library/search results | List navigation and item action sheet |
 | Output surface | Choose active player/output/group | List navigation and player action sheet |
 | Playback options overlay | Shuffle, repeat, radio continuation, favorite | Small option list with explicit toggles |
+
+## UX strictness application
+
+`docs/wheel-ux-strictness.md` is the canonical taxonomy for the strictness classes named here. This matrix only applies those class names to feature rows so the detailed class meanings stay in one place.
+
+| Music Assistant function row | UX strictness class |
+| --- | --- |
+| Play / pause | Immediate playback |
+| Stop | Immediate playback |
+| Previous / next track | Immediate playback |
+| Audiobook / podcast chapter movement | Immediate playback |
+| Scrub current track | Immediate playback |
+| Fine/coarse seek precision | Immediate playback |
+| Volume | Immediate playback |
+| Mute | Immediate playback |
+| Group volume | Immediate playback |
+| Power on/off player | Configuration/session setup |
+| Active queue navigation | Frequent session controls |
+| Remove queue item | Frequent session controls |
+| Move queue item | Frequent session controls |
+| Clear queue | Frequent session controls |
+| Save queue as playlist | Frequent session controls |
+| Shuffle | Frequent session controls |
+| Repeat | Frequent session controls |
+| Radio continuation / don't stop the music | Frequent session controls |
+| Favorite current item | Frequent session controls |
+| Browse library | Browsing/navigation |
+| Search library | Browsing/navigation |
+| Play album / playlist / radio station | Browsing/navigation |
+| Add item to queue / play next | Frequent session controls |
+| Select active player/output | Configuration/session setup |
+| Transfer playback between players | Configuration/session setup |
+| Join / unjoin group | Configuration/session setup |
+| Announcements / TTS | Settings/admin |
+| Metadata refresh / admin actions | Settings/admin |
+| Authentication / server discovery | Settings/admin |
 
 ## Music Assistant target button mapping
 
