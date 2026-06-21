@@ -115,14 +115,17 @@ class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
     private val onSnapshot: (SendspinConnectionSnapshot) -> Unit,
     private val queue: SendspinConnectionQueue = SendspinConnectionQueue { task -> task() },
-    protocolEvents: SendspinProtocolEvents = NoopSendspinProtocolEvents,
+    protocolEvents: SendspinProtocolEvents? = null,
     protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
 ) {
     private var sessionId = 0L
     private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
-    private val dispatcher = SendspinProtocolDispatcher(protocolEvents, protocolLogger)
+    private val dispatcher = SendspinProtocolDispatcher(
+        logger = protocolLogger,
+        events = protocolEvents ?: FailHardSendspinProtocolEvents(protocolLogger),
+    )
 
     /** Enqueues opening a fresh Sendspin session to [endpoint]. */
     fun connect(endpoint: URI, onResult: SendspinLifecycleResult = {}) {

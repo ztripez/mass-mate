@@ -47,18 +47,29 @@ class SendspinProtocolDispatcherTest {
                 .toString(),
         )
         dispatcher.dispatch(json("server/status").put("status", "ok").put("message", "ready").toString())
-        dispatcher.dispatch(json("server/error").put("code", "BAD_FRAME").put("message", "bad frame").toString())
 
         assertEquals(SendspinServerState("playing", 1234L, 5678L, 0.7), events.states.single())
         assertEquals(
             SendspinMetadata("Track", "Live", "Artist", "Album", "https://example.test/art.png"),
             events.metadata.single(),
         )
-        assertEquals(SendspinStreamStart("stream-1", "pcm", 48000, 2), events.streamStarts.single())
+        assertEquals(SendspinStreamStart("stream-1", SendspinStreamCodec.PCM, 48000, 2), events.streamStarts.single())
         assertEquals(SendspinStreamClear("stream-1"), events.streamClears.single())
         assertEquals(SendspinStreamEnd("stream-1", "complete"), events.streamEnds.single())
-        assertEquals(SendspinServerCommand("pause", "request-7", 2000L), events.commands.single())
+        assertEquals(SendspinServerCommand(SendspinServerCommandKind.PAUSE, "request-7", 2000L), events.commands.single())
         assertEquals(SendspinServerStatus("ok", "ready"), events.statuses.single())
+    }
+
+    @Test
+    fun dispatcherReportsServerErrorsThenFails() {
+        val events = RecordingEvents()
+
+        assertProtocolError {
+            SendspinProtocolDispatcher(events = events, logger = RecordingLogger()).dispatch(
+                json("server/error").put("code", "BAD_FRAME").put("message", "bad frame").toString(),
+            )
+        }
+
         assertEquals(SendspinServerProtocolError("BAD_FRAME", "bad frame"), events.errors.single())
     }
 
@@ -89,6 +100,43 @@ class SendspinProtocolDispatcherTest {
                     .put("codec", "pcm")
                     .put("sampleRateHz", "48000")
                     .put("channels", 2)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/start")
+                    .put("streamId", "stream-1")
+                    .put("codec", "flac")
+                    .put("sampleRateHz", 48000)
+                    .put("channels", 2)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/start")
+                    .put("streamId", "stream-1")
+                    .put("codec", "pcm")
+                    .put("sampleRateHz", 96000)
+                    .put("channels", 2)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/start")
+                    .put("streamId", "stream-1")
+                    .put("codec", "pcm")
+                    .put("sampleRateHz", 48000)
+                    .put("channels", 6)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/command")
+                    .put("command", "shuffle")
                     .toString(),
             )
         }
