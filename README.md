@@ -19,6 +19,8 @@ Wheel UX strictness is documented in [docs/wheel-ux-strictness.md](docs/wheel-ux
 
 The Music Assistant functionality mapping is documented in [docs/music-assistant-wheel-matrix.md](docs/music-assistant-wheel-matrix.md). Treat it as the source of truth for which Music Assistant features belong on the wheel, which are context actions, and which should stay out of the primary mobile playback path.
 
+The Sendspin local-player architecture is documented in [docs/sendspin-player-architecture.md](docs/sendspin-player-architecture.md). Treat it as the source of truth for the next backend integration slice: native Android owns the Sendspin connection, protocol state, timing, streams, audio output, and snapshot reporting behind the existing `PlayerAdapter` / `PlaybackIntent` seam.
+
 ## Getting started
 
 ```bash
@@ -31,6 +33,6 @@ Use `flutter devices` to choose an attached Android device or emulator.
 
 ## Current scope
 
-This repository currently contains the Flutter UI shell, local interaction model, and an adapter seam for future Music Assistant playback wiring. The player UI talks to an intent-level `PlayerAdapter`; the default adapter is still the local demo backend.
+This repository currently contains the Flutter UI shell, local interaction model, and an adapter seam for future playback wiring. The player UI talks to an intent-level `PlayerAdapter`; the default adapter is still the local demo backend. The next integration track is Sendspin local playback on Android, documented in `docs/sendspin-player-architecture.md`.
 
 Music Assistant API transport, authentication, device discovery, selected-player persistence, websocket state updates, and real playback control are intentionally left for follow-up work. The current Music Assistant classes are stubs that accept canonical playback intents and fail loudly when a real client is not configured.

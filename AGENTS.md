@@ -11,6 +11,7 @@ Before changing wheel, playback, Music Assistant integration, navigation, or mob
 - `docs/wheel-navigation-model.md` -- source of truth for screen navigation, list navigation, nested back stacks, and how those layers stay separate from `WheelMode`.
 - `docs/wheel-ux-strictness.md` -- source of truth for deciding whether a flow needs strict wheel-first ergonomics or can use relaxed setup/admin UI.
 - `docs/music-assistant-wheel-matrix.md` -- source of truth for how Music Assistant functionality maps to the wheel, buttons, context actions, UX strictness classes, adapter buckets, and priorities.
+- `docs/sendspin-player-architecture.md` -- source of truth for the Sendspin local-player architecture, native Android service boundary, Flutter/native bridge, protocol roles, transport strategy, version gating, and child issue acceptance guidance.
 - `docs/implementation-plan.md` -- staged integration plan for turning the matrix into implementation slices.
 - `docs/issue-index.md` -- active tracker entry points.
 
