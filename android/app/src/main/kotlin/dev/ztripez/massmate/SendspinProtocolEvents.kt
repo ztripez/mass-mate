@@ -35,13 +35,13 @@ interface SendspinProtocolEvents {
     /** Handoff for server time synchronization [time] responses. */
     fun onServerTime(time: SendspinServerTime)
 
-    /** Handoff for validated stream [stream] start descriptors; buffering/audio are deferred. */
+    /** Handoff for validated stream [stream] start descriptors; audio output is not performed here. */
     fun onStreamStart(stream: SendspinStreamStart)
 
-    /** Handoff for validated stream clear [stream] descriptors; buffer ownership is deferred. */
+    /** Handoff for validated stream clear [stream] descriptors. */
     fun onStreamClear(stream: SendspinStreamClear)
 
-    /** Handoff for validated stream end [stream] descriptors; audio teardown is deferred. */
+    /** Handoff for validated stream end [stream] descriptors; audio teardown is not performed here. */
     fun onStreamEnd(stream: SendspinStreamEnd)
 
     /** Handoff for raw server [command] events; Flutter intent mapping is not performed here. */

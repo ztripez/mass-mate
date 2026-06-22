@@ -53,17 +53,16 @@ data class SendspinServerTime(
     val serverSentAtMs: Long,
 )
 
-/** Stream codecs accepted as descriptors without enabling buffering or audio output. */
+/** Stream codecs accepted as descriptors without enabling audio output. */
 enum class SendspinStreamCodec(val wireValue: String) {
-    /** Baseline PCM descriptor; actual audio writes remain deferred. */
+    /** Baseline PCM descriptor; actual audio writes are not performed by the buffer owner. */
     PCM("pcm"),
 }
 
 /**
- * Stream-start descriptor for a future native stream owner.
+ * Stream-start descriptor for the native stream buffer owner.
  *
- * @property streamId Required server stream identifier for future binary frames; this model does
- * not buffer binary data.
+ * @property streamId Required server stream identifier for binary frames.
  * @property codec Required validated codec descriptor. Validation does not claim audio support.
  * @property sampleRateHz Required sample rate in hertz. Unsupported values fail during parse.
  * @property channels Required channel count. Unsupported counts fail during parse.
@@ -76,15 +75,15 @@ data class SendspinStreamStart(
 )
 
 /**
- * Stream-clear descriptor for a future native stream owner.
+ * Stream-clear descriptor for the native stream buffer owner.
  *
  * @property streamId Optional server stream identifier. `null` means clear all stream-owned native
- * state once stream buffering ownership exists.
+ * state.
  */
 data class SendspinStreamClear(val streamId: String? = null)
 
 /**
- * Stream-end descriptor for a future native stream owner.
+ * Stream-end descriptor for the native stream buffer owner.
  *
  * @property streamId Required server stream identifier that ended.
  * @property reason Optional server reason string; `null` means no reason was supplied.

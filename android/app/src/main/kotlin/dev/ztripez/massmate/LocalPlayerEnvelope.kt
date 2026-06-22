@@ -97,6 +97,7 @@ object LocalPlayerEnvelope {
             "queueMaxIndex" to 1,
             "isPlaying" to false,
             "timing" to snapshot.timing.toBridgeMap(),
+            "stream" to snapshot.stream.toBridgeMap(),
         ).apply {
             if (error != null) this["error"] = error
         }

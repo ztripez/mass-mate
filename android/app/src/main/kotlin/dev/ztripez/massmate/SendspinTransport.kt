@@ -6,16 +6,17 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 
 /**
- * Text-only transport seam for the Sendspin hello/goodbye connection path.
+ * WebSocket transport seam for Sendspin text protocol and binary audio frames.
  *
  * [open] starts an asynchronous connection to a validated endpoint and reports exactly one listener
  * stream for that transport instance. [sendText] sends a UTF-8 text protocol frame or throws
  * [SendspinConnectionException] / [RuntimeException] when the frame cannot be accepted by the
  * transport. [close] asks the transport to close; callers still surface close/send failures instead
- * of falling back to a demo backend. Binary audio frames and stream lifecycle are intentionally out
- * of scope for this interface.
+ * of falling back to a demo backend. Incoming binary frames are delivered as raw byte arrays to the
+ * native stream owner; this transport does not parse audio payloads.
  */
 interface SendspinTransport {
     /** Opens the transport to [endpoint] and reports lifecycle, text, close, and failure callbacks. */
@@ -34,6 +35,9 @@ interface SendspinTransport {
 
         /** A text frame arrived for handshake parsing or native protocol dispatch. */
         fun onText(text: String)
+
+        /** A binary frame arrived for native stream buffering. */
+        fun onBinary(bytes: ByteArray)
 
         /** The WebSocket closed without an explicit service disconnect. */
         fun onClosed(code: Int, reason: String)
@@ -74,6 +78,10 @@ class OkHttpWebSocketSendspinTransport(
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     listener.onText(text)
+                }
+
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                    listener.onBinary(bytes.toByteArray())
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

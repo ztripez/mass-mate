@@ -3,7 +3,7 @@ package dev.ztripez.massmate
 import java.net.URI
 
 /**
- * Fake text transport for deterministic hello/goodbye, dispatch, and stale-callback tests.
+ * Fake transport for deterministic hello/goodbye, dispatch, binary-frame, and stale-callback tests.
  *
  * @param throwOnSendContaining Optional text fragment that makes [sendText] throw when matched.
  * @param throwOnClose Whether [close] should throw instead of recording close state.
@@ -55,6 +55,11 @@ class FakeSendspinTransport(
     /** Emits an incoming text [text] frame to the registered controller listener. */
     fun receiveText(text: String) {
         listener?.onText(text)
+    }
+
+    /** Emits an incoming binary [bytes] frame to the registered controller listener. */
+    fun receiveBinary(bytes: ByteArray) {
+        listener?.onBinary(bytes)
     }
 
     /** Emits a transport [error] callback to the registered controller listener. */

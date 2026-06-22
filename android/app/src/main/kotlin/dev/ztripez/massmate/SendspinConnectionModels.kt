@@ -30,6 +30,7 @@ enum class SendspinConnectionStatus(val bridgeValue: String) {
  * @property mediaTitle Placeholder title sent through the existing player snapshot bridge.
  * @property mediaSubtitle Placeholder subtitle sent through the existing player snapshot bridge.
  * @property timing Native clock synchronization diagnostics for local-player debug snapshots.
+ * @property stream Native stream lifecycle and frame-buffer diagnostics for local-player snapshots.
  * @property error Failure code, message, and details for [SendspinConnectionStatus.FAILED].
  */
 data class SendspinConnectionSnapshot(
@@ -39,6 +40,7 @@ data class SendspinConnectionSnapshot(
     val mediaTitle: String,
     val mediaSubtitle: String,
     val timing: SendspinClockSnapshot = SendspinClockSnapshot.unsynchronized(),
+    val stream: SendspinStreamBufferSnapshot = SendspinStreamBufferSnapshot.inactive(),
     val error: SendspinConnectionException? = null,
 ) {
     companion object {
@@ -64,11 +66,13 @@ data class SendspinConnectionSnapshot(
         /**
          * Creates a ready snapshot after a validated handshake.
          *
-         * [timing] carries native clock synchronization diagnostics for debug snapshot consumers.
+         * [timing] carries native clock synchronization diagnostics for debug snapshot consumers and
+         * [stream] carries native stream-buffer diagnostics.
          */
         fun ready(
             generation: Long,
             timing: SendspinClockSnapshot = SendspinClockSnapshot.unsynchronized(),
+            stream: SendspinStreamBufferSnapshot = SendspinStreamBufferSnapshot.inactive(),
         ): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
             generation = generation,
             status = SendspinConnectionStatus.READY,
@@ -76,6 +80,7 @@ data class SendspinConnectionSnapshot(
             mediaTitle = "Local player ready",
             mediaSubtitle = "Handshake complete",
             timing = timing,
+            stream = stream,
         )
 
         /** Creates a failed snapshot carrying [error] details. */
