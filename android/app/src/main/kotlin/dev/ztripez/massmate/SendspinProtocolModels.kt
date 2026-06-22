@@ -38,6 +38,21 @@ data class SendspinMetadata(
     val artworkUrl: String? = null,
 )
 
+/**
+ * Server time response used for native monotonic clock synchronization.
+ *
+ * @property requestId Client request identifier echoed by the server.
+ * @property clientSentAtMs Client monotonic send time in milliseconds from the original request.
+ * @property serverReceivedAtMs Server receive timestamp in the server clock domain.
+ * @property serverSentAtMs Server send timestamp in the server clock domain.
+ */
+data class SendspinServerTime(
+    val requestId: String,
+    val clientSentAtMs: Long,
+    val serverReceivedAtMs: Long,
+    val serverSentAtMs: Long,
+)
+
 /** Stream codecs accepted as descriptors without enabling buffering or audio output. */
 enum class SendspinStreamCodec(val wireValue: String) {
     /** Baseline PCM descriptor; actual audio writes remain deferred. */

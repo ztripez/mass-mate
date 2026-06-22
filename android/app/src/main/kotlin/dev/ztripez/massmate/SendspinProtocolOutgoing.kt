@@ -44,32 +44,26 @@ data class SendspinClientState(
     }
 }
 
-/** Native time-sync statuses serialized through `client/time` without implementing clock sync. */
-enum class SendspinClientTimeStatus(val wireValue: String) {
-    /** Clock sync is intentionally unavailable until native time synchronization exists. */
-    UNAVAILABLE("unavailable"),
-}
-
 /**
- * Native-only `client/time` serializer for pre-clock-sync diagnostics.
+ * Native-only `client/time` request serializer for clock synchronization.
  *
- * @property status Required time-sync status. This serializer only publishes [UNAVAILABLE].
- * @property reason Required diagnostic reason; it is not synchronized clock quality.
+ * @property requestId Required client request identifier echoed by `server/time`.
+ * @property clientSentAtMs Required local monotonic send timestamp in milliseconds.
  */
 data class SendspinClientTime(
-    val status: SendspinClientTimeStatus,
-    val reason: String,
+    val requestId: String,
+    val clientSentAtMs: Long,
 ) : SendspinOutgoingMessage {
     override fun toJson(): JSONObject = JSONObject()
         .put("type", CLIENT_TIME_TYPE)
-        .put("status", status.wireValue)
-        .put("reason", reason)
+        .put("requestId", requestId)
+        .put("clientSentAtMs", clientSentAtMs)
 
     companion object {
-        /** Placeholder payload that does not pretend clock sync has been implemented. */
-        fun unavailableUntilClockSync(): SendspinClientTime = SendspinClientTime(
-            status = SendspinClientTimeStatus.UNAVAILABLE,
-            reason = "clock-sync-deferred",
+        /** Creates a timing request carrying [requestId] and local monotonic [clientSentAtMs]. */
+        fun request(requestId: String, clientSentAtMs: Long): SendspinClientTime = SendspinClientTime(
+            requestId = requestId,
+            clientSentAtMs = clientSentAtMs,
         )
     }
 }

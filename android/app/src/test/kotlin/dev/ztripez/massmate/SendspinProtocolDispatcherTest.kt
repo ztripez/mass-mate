@@ -30,6 +30,14 @@ class SendspinProtocolDispatcherTest {
                 .toString(),
         )
         dispatcher.dispatch(
+            json("server/time")
+                .put("requestId", "time-1")
+                .put("clientSentAtMs", 1_000L)
+                .put("serverReceivedAtMs", 5_000L)
+                .put("serverSentAtMs", 5_002L)
+                .toString(),
+        )
+        dispatcher.dispatch(
             json("stream/start")
                 .put("streamId", "stream-1")
                 .put("codec", "pcm")
@@ -53,6 +61,7 @@ class SendspinProtocolDispatcherTest {
             SendspinMetadata("Track", "Live", "Artist", "Album", "https://example.test/art.png"),
             events.metadata.single(),
         )
+        assertEquals(SendspinServerTime("time-1", 1_000L, 5_000L, 5_002L), events.times.single())
         assertEquals(SendspinStreamStart("stream-1", SendspinStreamCodec.PCM, 48000, 2), events.streamStarts.single())
         assertEquals(SendspinStreamClear("stream-1"), events.streamClears.single())
         assertEquals(SendspinStreamEnd("stream-1", "complete"), events.streamEnds.single())
@@ -142,6 +151,55 @@ class SendspinProtocolDispatcherTest {
                     .toString(),
             )
         }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/time")
+                    .put("clientSentAtMs", 1_000L)
+                    .put("serverReceivedAtMs", 5_000L)
+                    .put("serverSentAtMs", 5_002L)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/time")
+                    .put("requestId", 7)
+                    .put("clientSentAtMs", 1_000L)
+                    .put("serverReceivedAtMs", 5_000L)
+                    .put("serverSentAtMs", 5_002L)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/time")
+                    .put("requestId", "time-1")
+                    .put("clientSentAtMs", "1000")
+                    .put("serverReceivedAtMs", 5_000L)
+                    .put("serverSentAtMs", 5_002L)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/time")
+                    .put("requestId", "time-1")
+                    .put("clientSentAtMs", 1_000L)
+                    .put("serverReceivedAtMs", "5000")
+                    .put("serverSentAtMs", 5_002L)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("server/time")
+                    .put("requestId", "time-1")
+                    .put("clientSentAtMs", 1_000L)
+                    .put("serverReceivedAtMs", 5_000L)
+                    .put("serverSentAtMs", "5002")
+                    .toString(),
+            )
+        }
     }
 
     @Test
@@ -157,10 +215,11 @@ class SendspinProtocolDispatcherTest {
             state.keys().asSequence().toSet(),
         )
 
-        val time = JSONObject(SendspinClientTime.unavailableUntilClockSync().toText())
+        val time = JSONObject(SendspinClientTime.request("time-1", 1234L).toText())
         assertEquals("client/time", time.getString("type"))
-        assertEquals("unavailable", time.getString("status"))
-        assertEquals("clock-sync-deferred", time.getString("reason"))
+        assertEquals("time-1", time.getString("requestId"))
+        assertEquals(1234L, time.getLong("clientSentAtMs"))
+        assertEquals(setOf("type", "requestId", "clientSentAtMs"), time.keys().asSequence().toSet())
 
         val command = JSONObject(
             SendspinClientCommand(
@@ -192,6 +251,7 @@ class SendspinProtocolDispatcherTest {
 private class RecordingEvents : SendspinProtocolEvents {
     val states = mutableListOf<SendspinServerState>()
     val metadata = mutableListOf<SendspinMetadata>()
+    val times = mutableListOf<SendspinServerTime>()
     val streamStarts = mutableListOf<SendspinStreamStart>()
     val streamClears = mutableListOf<SendspinStreamClear>()
     val streamEnds = mutableListOf<SendspinStreamEnd>()
@@ -205,6 +265,10 @@ private class RecordingEvents : SendspinProtocolEvents {
 
     override fun onMetadata(metadata: SendspinMetadata) {
         this.metadata.add(metadata)
+    }
+
+    override fun onServerTime(time: SendspinServerTime) {
+        times.add(time)
     }
 
     override fun onStreamStart(stream: SendspinStreamStart) {
@@ -234,6 +298,7 @@ private class RecordingEvents : SendspinProtocolEvents {
     fun hasAnyEvent(): Boolean = listOf(
         states,
         metadata,
+        times,
         streamStarts,
         streamClears,
         streamEnds,

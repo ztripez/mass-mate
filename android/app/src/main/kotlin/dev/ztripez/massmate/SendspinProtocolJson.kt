@@ -33,6 +33,15 @@ internal object SendspinProtocolJson {
         return value
     }
 
+    fun requiredLong(json: JSONObject, field: String, description: String): Long {
+        val value = requiredValue(json, field, description)
+        return when (value) {
+            is Int -> value.toLong()
+            is Long -> value
+            else -> throw fieldError(field, "integer", description)
+        }
+    }
+
     fun optionalLong(json: JSONObject, field: String, description: String): Long? {
         if (!json.has(field) || json.isNull(field)) return null
         return when (val value = json.get(field)) {

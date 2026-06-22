@@ -16,6 +16,7 @@ class SendspinConnectionProtocolDispatchTest {
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
             protocolLogger = logger,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
 
         connectReady(controller, transport)
@@ -32,6 +33,7 @@ class SendspinConnectionProtocolDispatchTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
 
         connectReady(controller, transport)
@@ -73,6 +75,7 @@ class SendspinConnectionProtocolDispatchTest {
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
             protocolEvents = events,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
 
         connectReady(controller, transport)
@@ -97,6 +100,7 @@ class SendspinConnectionProtocolDispatchTest {
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
             protocolEvents = events,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
 
         connectReady(controller, transport)
@@ -113,12 +117,109 @@ class SendspinConnectionProtocolDispatchTest {
     }
 
     @Test
+    fun serverTimeResponsesUpdateTimingSnapshots() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val clock = MutableTestClock(1_000L)
+        val timingController = SendspinTimingController(monotonicClock = clock, minimumRequestIntervalMs = 0L)
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            timingController = timingController,
+        )
+
+        connectReady(controller, transport)
+        val firstRequest = lastClientTimeRequest(transport)
+        clock.nowMs = 1_050L
+        transport.receiveText(serverTime(firstRequest, 5_000L, 5_002L))
+        val secondRequest = lastClientTimeRequest(transport)
+        clock.nowMs = 1_150L
+        transport.receiveText(serverTime(secondRequest, 5_075L, 5_077L))
+        val thirdRequest = lastClientTimeRequest(transport)
+        clock.nowMs = 1_250L
+        transport.receiveText(serverTime(thirdRequest, 5_175L, 5_177L))
+
+        val timing = snapshots.last().timing
+        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
+        assertEquals(SendspinClockQuality.STABLE, timing.quality)
+        assertEquals(3_976L, timing.offsetMs)
+        assertEquals(3, timing.sampleCount)
+    }
+
+    @Test
+    fun fastServerTimeResponseDoesNotSendImmediateFollowUpRequest() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val clock = MutableTestClock(1_000L)
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = clock),
+        )
+
+        connectReady(controller, transport)
+        val sentCountAfterHandshake = transport.sentTexts.size
+        val request = lastClientTimeRequest(transport)
+        clock.nowMs = 1_050L
+        transport.receiveText(serverTime(request, 5_000L, 5_002L))
+
+        assertEquals(sentCountAfterHandshake, transport.sentTexts.size)
+        assertEquals(SendspinClockQuality.DEGRADED, snapshots.last().timing.quality)
+    }
+
+    @Test
+    fun unknownServerTimeRequestFailsSessionVisibly() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_050L }),
+        )
+
+        connectReady(controller, transport)
+        transport.receiveText(
+            JSONObject()
+                .put("type", "server/time")
+                .put("requestId", "unknown-time-request")
+                .put("clientSentAtMs", 1_000L)
+                .put("serverReceivedAtMs", 5_000L)
+                .put("serverSentAtMs", 5_002L)
+                .toString(),
+        )
+
+        assertProtocolFailure(snapshots)
+        assertTrue(snapshots.last().error?.message.orEmpty().contains("active client time request"))
+    }
+
+    @Test
+    fun invalidServerTimeOrderingFailsSessionVisibly() {
+        val transport = FakeSendspinTransport()
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val clock = MutableTestClock(1_000L)
+        val controller = SendspinConnectionController(
+            transportFactory = SendspinTransportFactory { transport },
+            onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = clock),
+        )
+
+        connectReady(controller, transport)
+        val request = lastClientTimeRequest(transport)
+        clock.nowMs = 1_050L
+        transport.receiveText(serverTime(request, serverReceivedAtMs = 5_010L, serverSentAtMs = 5_002L))
+
+        assertProtocolFailure(snapshots)
+        assertTrue(snapshots.last().error?.message.orEmpty().contains("server send time"))
+    }
+
+    @Test
     fun rawNativeClientCommandSendsOnlyWhenReady() {
         val transport = FakeSendspinTransport()
         val snapshots = mutableListOf<SendspinConnectionSnapshot>()
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         var sendError: SendspinConnectionException? = SendspinConnectionException("unset", "unset")
 
@@ -147,6 +248,7 @@ class SendspinConnectionProtocolDispatchTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         var sendError: SendspinConnectionException? = null
 
@@ -167,6 +269,7 @@ class SendspinConnectionProtocolDispatchTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         var sendError: SendspinConnectionException? = null
 
@@ -189,6 +292,7 @@ class SendspinConnectionProtocolDispatchTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         var sendError: SendspinConnectionException? = null
 
@@ -209,6 +313,7 @@ class SendspinConnectionProtocolDispatchTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         connectReady(controller, transport)
         transport.receiveText(text)
@@ -227,6 +332,27 @@ class SendspinConnectionProtocolDispatchTest {
         .put("activatedRoles", listOf("audio", "controller", "state", "time"))
         .toString()
 
+    private fun serverTime(
+        request: TimeRequest,
+        serverReceivedAtMs: Long,
+        serverSentAtMs: Long,
+    ): String = JSONObject()
+        .put("type", "server/time")
+        .put("requestId", request.requestId)
+        .put("clientSentAtMs", request.clientSentAtMs)
+        .put("serverReceivedAtMs", serverReceivedAtMs)
+        .put("serverSentAtMs", serverSentAtMs)
+        .toString()
+
+    private fun lastClientTimeRequest(transport: FakeSendspinTransport): TimeRequest {
+        val json = JSONObject(transport.sentTexts.last())
+        assertEquals("client/time", json.getString("type"))
+        return TimeRequest(
+            requestId = json.getString("requestId"),
+            clientSentAtMs = json.getLong("clientSentAtMs"),
+        )
+    }
+
     private fun assertProtocolFailure(snapshots: List<SendspinConnectionSnapshot>) {
         assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
         assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR, snapshots.last().error?.code)
@@ -235,12 +361,17 @@ class SendspinConnectionProtocolDispatchTest {
 
 private class CapturingProtocolEvents : SendspinProtocolEvents {
     val metadata = mutableListOf<SendspinMetadata>()
+    val times = mutableListOf<SendspinServerTime>()
     val protocolErrors = mutableListOf<SendspinServerProtocolError>()
 
     override fun onServerState(state: SendspinServerState) = Unit
 
     override fun onMetadata(metadata: SendspinMetadata) {
         this.metadata.add(metadata)
+    }
+
+    override fun onServerTime(time: SendspinServerTime) {
+        times.add(time)
     }
 
     override fun onStreamStart(stream: SendspinStreamStart) = Unit
@@ -267,3 +398,14 @@ private class CapturingProtocolLogger : SendspinProtocolLogger {
 
     fun unknownTypes(): List<String> = warnings.mapNotNull { it?.get("type") as? String }
 }
+
+private class MutableTestClock(
+    var nowMs: Long,
+) : SendspinMonotonicClock {
+    override fun nowMs(): Long = nowMs
+}
+
+private data class TimeRequest(
+    val requestId: String,
+    val clientSentAtMs: Long,
+)
