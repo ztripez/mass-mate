@@ -143,8 +143,20 @@ class SendspinConnectionControllerTest {
             listOf(SendspinConnectionStatus.CONNECTING, SendspinConnectionStatus.READY),
             snapshots.map { it.status },
         )
-        assertTrue(transport.sentTexts.first().contains("client/hello"))
+        assertEquals("client/hello", JSONObject(transport.sentTexts[0]).getString("type"))
+        assertEquals("client/state", JSONObject(transport.sentTexts[1]).getString("type"))
+        assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("streamActive"))
+        assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("audioOutputActive"))
+        assertEquals("client/time", JSONObject(transport.sentTexts[2]).getString("type"))
+        assertEquals("unavailable", JSONObject(transport.sentTexts[2]).getString("status"))
+        assertEquals("clock-sync-deferred", JSONObject(transport.sentTexts[2]).getString("reason"))
         assertTrue(snapshots[1].generation > snapshots[0].generation)
+    }
+
+    @Test
+    fun initialClientProtocolStatusSendFailuresFailBeforeReady() {
+        assertInitialStatusSendFailure("client/state")
+        assertInitialStatusSendFailure("client/time")
     }
 
     @Test
@@ -211,21 +223,6 @@ class SendspinConnectionControllerTest {
         assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
         assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_ROLE_MISMATCH, snapshots.last().error?.code)
         assertEquals(true, snapshots.last().error?.details?.containsKey("missingRoles"))
-    }
-
-    @Test
-    fun postReadyTextFailsUntilDispatcherExists() {
-        val transport = FakeSendspinTransport()
-        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
-        val controller = controller(transport, snapshots)
-
-        controller.connect(URI("ws://music.example.local/sendspin"))
-        transport.opened()
-        transport.receiveText(serverHello())
-        transport.receiveText("{\"type\":\"server/state\"}")
-
-        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
-        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR, snapshots.last().error?.code)
     }
 
     @Test
@@ -387,52 +384,19 @@ class SendspinConnectionControllerTest {
         }
         throw AssertionError("Expected SendspinConnectionException with code $expectedCode")
     }
-}
 
-/** Fake text transport for deterministic hello/goodbye and stale-callback tests. */
-private class FakeSendspinTransport(
-    private val throwOnSendContaining: String? = null,
-    private val throwOnClose: Boolean = false,
-) : SendspinTransport {
-    val sentTexts = mutableListOf<String>()
-    var endpoint: URI? = null
-    var closed = false
-    var closeCode: Int? = null
-    var closeReason: String? = null
-    private var listener: SendspinTransport.Listener? = null
+    private fun assertInitialStatusSendFailure(failingMessageType: String) {
+        val transport = FakeSendspinTransport(throwOnSendContaining = failingMessageType)
+        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
+        val controller = controller(transport, snapshots)
 
-    override fun open(endpoint: URI, listener: SendspinTransport.Listener) {
-        this.endpoint = endpoint
-        this.listener = listener
-    }
+        controller.connect(URI("ws://music.example.local/sendspin"))
+        transport.opened()
+        transport.receiveText(serverHello())
 
-    override fun sendText(text: String) {
-        if (throwOnSendContaining != null && text.contains(throwOnSendContaining)) {
-            throw IllegalStateException("send refused for $throwOnSendContaining")
-        }
-        sentTexts.add(text)
-    }
-
-    override fun close(code: Int, reason: String?) {
-        if (throwOnClose) throw IllegalStateException("close refused")
-        closed = true
-        closeCode = code
-        closeReason = reason
-    }
-
-    fun opened() {
-        listener?.onOpen()
-    }
-
-    fun receiveText(text: String) {
-        listener?.onText(text)
-    }
-
-    fun fail(error: Throwable) {
-        listener?.onFailure(error)
-    }
-
-    fun closedByPeer(code: Int, reason: String) {
-        listener?.onClosed(code, reason)
+        assertFalse(snapshots.any { it.status == SendspinConnectionStatus.READY })
+        assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)
+        assertEquals(LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR, snapshots.last().error?.code)
+        assertTrue(snapshots.last().error?.message.orEmpty().contains("initial Sendspin client protocol status"))
     }
 }

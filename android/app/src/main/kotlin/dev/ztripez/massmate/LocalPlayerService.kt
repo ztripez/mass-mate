@@ -16,8 +16,8 @@ import android.os.Looper
  * playback operations through the Dart adapter seam. Transport open, hello/goodbye, deterministic
  * reconnect, and connection-state aggregation run on a dedicated serial background thread so
  * MethodChannel calls never block Android's main thread on transport locks or callbacks. The
- * service intentionally does not implement audio output, stream lifecycle, clock sync, browse, or a
- * controller command dispatcher.
+ * service intentionally does not implement audio output, stream buffering, clock sync, browse, or
+ * intent-to-Sendspin controller command mapping.
  */
 class LocalPlayerService : Service() {
     private val binder = LocalBinder()
@@ -105,7 +105,7 @@ class LocalPlayerService : Service() {
      *
      * Invalid envelopes return `LOCAL_PLAYER_INVALID_ENVELOPE`. Valid commands require
      * [SendspinConnectionStatus.READY]; otherwise the service emits and returns
-     * `LOCAL_PLAYER_NOT_CONNECTED`. Because command dispatch is outside this handshake slice,
+     * `LOCAL_PLAYER_NOT_CONNECTED`. Because Flutter command dispatch is not implemented yet,
      * ready-state commands return `LOCAL_PLAYER_REJECTED` instead of pretending success.
      */
     fun sendCommand(envelope: Map<*, *>?): Map<String, Any?> {

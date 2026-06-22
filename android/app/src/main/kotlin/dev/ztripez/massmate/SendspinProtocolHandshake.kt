@@ -1,14 +1,13 @@
 package dev.ztripez.massmate
 
 import org.json.JSONArray
-import org.json.JSONException
 import org.json.JSONObject
 
 /**
  * Minimal Sendspin hello/goodbye handshake parser and serializer.
  *
  * This object owns only the connection readiness gate: `client/hello`, `server/hello`, activated
- * role validation, and `client/goodbye`. Full Sendspin message modeling and dispatch remain outside
+ * role validation, and `client/goodbye`. Post-handshake message modeling and dispatch remain outside
  * this layer. [PROTOCOL_VERSION], [advertisedClientRoles], and [requiredClientRoles] are the native
  * invariants required before the local-player backend may report READY. Parsing is deliberately
  * strict: malformed JSON, missing fields, wrong field types, unsupported protocol versions, and
@@ -51,20 +50,16 @@ object SendspinProtocolHandshake {
 
     /** Parses a strict `server/hello` text frame into [ServerHello]. */
     fun parseServerHello(text: String): ServerHello {
-        val json = try {
-            JSONObject(text)
-        } catch (error: JSONException) {
-            throw protocolError("Malformed Sendspin server hello JSON.", mapOf("message" to error.message))
-        }
+        val json = SendspinProtocolJson.parseObject(text, "Sendspin server hello")
 
-        val type = readString(json, "type")
+        val type = SendspinProtocolJson.requiredString(json, "type", "Sendspin server hello")
         if (type != SERVER_HELLO_TYPE) {
-            throw protocolError("Expected Sendspin server hello, but received `$type`.")
+            throw SendspinProtocolJson.protocolError("Expected Sendspin server hello, but received `$type`.")
         }
 
-        val protocolVersion = readProtocolVersion(json)
+        val protocolVersion = SendspinProtocolJson.requiredInt(json, "protocolVersion", "Sendspin server hello")
         if (protocolVersion != PROTOCOL_VERSION) {
-            throw protocolError(
+            throw SendspinProtocolJson.protocolError(
                 "Unsupported Sendspin protocol version `$protocolVersion`.",
                 mapOf("expected" to PROTOCOL_VERSION, "actual" to protocolVersion),
             )
@@ -72,7 +67,11 @@ object SendspinProtocolHandshake {
 
         return ServerHello(
             protocolVersion = protocolVersion,
-            activatedRoles = readStringSet(json, "activatedRoles"),
+            activatedRoles = SendspinProtocolJson.requiredStringSet(
+                json,
+                "activatedRoles",
+                "Sendspin server hello",
+            ),
         )
     }
 
@@ -100,57 +99,6 @@ object SendspinProtocolHandshake {
         }
     }
 
-    private fun readString(json: JSONObject, field: String): String {
-        if (!json.has(field)) {
-            throw protocolError("Sendspin server hello is missing string field `$field`.")
-        }
-        val value = json.get(field)
-        if (value !is String) {
-            throw protocolError("Sendspin server hello field `$field` must be a string.")
-        }
-        return value
-    }
-
-    private fun readProtocolVersion(json: JSONObject): Int {
-        val field = "protocolVersion"
-        if (!json.has(field)) {
-            throw protocolError("Sendspin server hello is missing integer field `$field`.")
-        }
-        val value = json.get(field)
-        if (value !is Int) {
-            throw protocolError("Sendspin server hello field `$field` must be an integer.")
-        }
-        return value
-    }
-
-    private fun readStringSet(json: JSONObject, field: String): Set<String> {
-        if (!json.has(field)) {
-            throw protocolError("Sendspin server hello is missing string array field `$field`.")
-        }
-        val value = json.get(field)
-        if (value !is JSONArray) {
-            throw protocolError("Sendspin server hello field `$field` must be an array.")
-        }
-
-        val roles = linkedSetOf<String>()
-        for (index in 0 until value.length()) {
-            val role = value.get(index)
-            if (role !is String) {
-                throw protocolError("Sendspin server hello field `$field` must contain only strings.")
-            }
-            roles.add(role)
-        }
-        return roles
-    }
-
-    private fun protocolError(
-        message: String,
-        details: Map<String, Any?>? = null,
-    ): SendspinConnectionException = SendspinConnectionException(
-        LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
-        message,
-        details,
-    )
 }
 
 /** Parsed `server/hello` payload used by the native handshake readiness gate. */

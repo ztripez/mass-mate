@@ -99,6 +99,14 @@ fun interface SendspinConnectionQueue {
 typealias SendspinLifecycleResult = (SendspinConnectionException?) -> Unit
 
 /**
+ * Callback receiving the result of a native-only Sendspin protocol send.
+ *
+ * A `null` argument means the protocol message was accepted by the active transport. A non-null
+ * [SendspinConnectionException] is emitted through snapshots and returned to the native caller.
+ */
+typealias SendspinProtocolSendResult = (SendspinConnectionException?) -> Unit
+
+/**
  * Deterministic Sendspin connection owner for transport open, hello, goodbye, and reconnect.
  *
  * All public methods and transport callbacks are serialized through [queue]. Production code passes
@@ -107,18 +115,34 @@ typealias SendspinLifecycleResult = (SendspinConnectionException?) -> Unit
  * [connect] replaces any active session: the previous session sends `client/goodbye` only after a
  * client hello was sent, closes with [SendspinTransport.NORMAL_CLOSURE], and any later callbacks
  * from that old session are ignored by session id. If replacement goodbye fails, the reconnect is
- * not opened and a failed snapshot/result are emitted. Unsupported text after READY fails loudly
- * until a future dispatcher owns non-handshake messages.
+ * not opened and a failed snapshot/result are emitted. Post-handshake text is parsed by the native
+ * protocol dispatcher so unknown message types and invalid known messages fail visibly through
+ * snapshots. [sendRawClientCommand] is native protocol serialization only; Flutter
+ * intent-to-command mapping remains unimplemented in this controller.
+ *
+ * @param transportFactory Creates a fresh text transport for each new Sendspin connection attempt.
+ * @param onSnapshot Receives every lifecycle snapshot emitted by the controller.
+ * @param queue Serializes lifecycle calls and transport callbacks; defaults to immediate execution
+ * for deterministic unit tests.
+ * @param protocolEvents Optional native owner for parsed post-handshake protocol events. `null`
+ * selects [FailHardSendspinProtocolEvents], which fails visibly for families without owners.
+ * @param protocolLogger Logger for protocol diagnostics before visible failures.
  */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
     private val onSnapshot: (SendspinConnectionSnapshot) -> Unit,
     private val queue: SendspinConnectionQueue = SendspinConnectionQueue { task -> task() },
+    protocolEvents: SendspinProtocolEvents? = null,
+    protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
 ) {
     private var sessionId = 0L
     private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
+    private val dispatcher = SendspinProtocolDispatcher(
+        logger = protocolLogger,
+        events = protocolEvents ?: FailHardSendspinProtocolEvents(protocolLogger),
+    )
 
     /** Enqueues opening a fresh Sendspin session to [endpoint]. */
     fun connect(endpoint: URI, onResult: SendspinLifecycleResult = {}) {
@@ -128,6 +152,20 @@ class SendspinConnectionController(
     /** Enqueues deliberate disconnect and goodbye when the current protocol state allows it. */
     fun disconnect(onResult: SendspinLifecycleResult = {}) {
         queue.execute { disconnectOnQueue(onResult) }
+    }
+
+    /**
+     * Enqueues a raw native `client/command` message for an already-ready Sendspin session.
+     *
+     * This method is not a Flutter bridge API and does not map `PlaybackIntent` values. Later command
+     * mapping owns deciding when to create [command]. Not-ready sessions and send failures are emitted
+     * as visible native snapshots instead of pretending success.
+     */
+    fun sendRawClientCommand(
+        command: SendspinClientCommand,
+        onResult: SendspinProtocolSendResult = {},
+    ) {
+        queue.execute { sendRawClientCommandOnQueue(command, onResult) }
     }
 
     private fun connectOnQueue(endpoint: URI, onResult: SendspinLifecycleResult) {
@@ -217,24 +255,16 @@ class SendspinConnectionController(
     private fun handleText(listenerSessionId: Long, text: String) {
         val session = activeSessionIfCurrent(listenerSessionId) ?: return
         if (session.ready) {
-            failCurrentSession(
-                listenerSessionId,
-                SendspinConnectionException(
-                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
-                    "Received unsupported Sendspin text frame after handshake readiness.",
-                    mapOf("sessionId" to listenerSessionId),
-                ),
-            )
+            dispatchReadyText(listenerSessionId, text)
             return
         }
 
         try {
             val serverHello = SendspinProtocolHandshake.parseServerHello(text)
             SendspinProtocolHandshake.validateServerHello(serverHello)
-            session.ready = true
-            emit(SendspinConnectionSnapshot.ready(nextGeneration()))
         } catch (error: SendspinConnectionException) {
             failCurrentSession(listenerSessionId, error)
+            return
         } catch (error: RuntimeException) {
             failCurrentSession(
                 listenerSessionId,
@@ -244,7 +274,92 @@ class SendspinConnectionController(
                     mapOf("message" to error.message),
                 ),
             )
+            return
         }
+
+        try {
+            sendInitialClientProtocolStatus()
+            session.ready = true
+            emit(SendspinConnectionSnapshot.ready(nextGeneration()))
+        } catch (error: SendspinConnectionException) {
+            failCurrentSession(listenerSessionId, error)
+        } catch (error: RuntimeException) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                    "Failed to send initial Sendspin client protocol status.",
+                    mapOf("message" to error.message),
+                ),
+            )
+        }
+    }
+
+    private fun sendRawClientCommandOnQueue(
+        command: SendspinClientCommand,
+        onResult: SendspinProtocolSendResult,
+    ) {
+        val session = activeSession
+        val transport = activeTransport
+        if (session?.ready != true || transport == null) {
+            val error = SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_NOT_CONNECTED,
+                "Cannot send Sendspin client command before handshake readiness.",
+            )
+            if (session != null) {
+                failCurrentSession(session.id, error)
+            } else {
+                emitFailed(error)
+            }
+            onResult(error)
+            return
+        }
+
+        val sendError = try {
+            transport.sendText(command.toText())
+            null
+        } catch (error: SendspinConnectionException) {
+            error
+        } catch (error: RuntimeException) {
+            SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+                "Failed to send Sendspin client command.",
+                mapOf("message" to error.message),
+            )
+        }
+        if (sendError == null) {
+            onResult(null)
+            return
+        }
+
+        failCurrentSession(session.id, sendError)
+        onResult(sendError)
+    }
+
+    private fun dispatchReadyText(listenerSessionId: Long, text: String) {
+        try {
+            dispatcher.dispatch(text)
+        } catch (error: SendspinConnectionException) {
+            failCurrentSession(listenerSessionId, error)
+        } catch (error: RuntimeException) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
+                    "Sendspin protocol message could not be dispatched.",
+                    mapOf("message" to error.message),
+                ),
+            )
+        }
+    }
+
+    private fun sendInitialClientProtocolStatus() {
+        val transport = activeTransport ?: throw SendspinConnectionException(
+            LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
+            "Cannot send initial Sendspin client protocol status without an active transport.",
+        )
+        transport.sendText(SendspinClientState.initialReady().toText())
+        transport.sendText(SendspinClientTime.unavailableUntilClockSync().toText())
     }
 
     private fun handleClosed(listenerSessionId: Long, code: Int, reason: String) {
