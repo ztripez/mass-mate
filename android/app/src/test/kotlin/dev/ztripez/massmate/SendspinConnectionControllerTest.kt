@@ -148,8 +148,9 @@ class SendspinConnectionControllerTest {
         assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("streamActive"))
         assertEquals(false, JSONObject(transport.sentTexts[1]).getBoolean("audioOutputActive"))
         assertEquals("client/time", JSONObject(transport.sentTexts[2]).getString("type"))
-        assertEquals("unavailable", JSONObject(transport.sentTexts[2]).getString("status"))
-        assertEquals("clock-sync-deferred", JSONObject(transport.sentTexts[2]).getString("reason"))
+        assertEquals("time-2-1", JSONObject(transport.sentTexts[2]).getString("requestId"))
+        assertEquals(1_000L, JSONObject(transport.sentTexts[2]).getLong("clientSentAtMs"))
+        assertEquals(SendspinClockQuality.UNSYNCHRONIZED, snapshots[1].timing.quality)
         assertTrue(snapshots[1].generation > snapshots[0].generation)
     }
 
@@ -252,6 +253,7 @@ class SendspinConnectionControllerTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transports.removeFirst() },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
         var reconnectError: SendspinConnectionException? = null
 
@@ -310,6 +312,7 @@ class SendspinConnectionControllerTest {
         val controller = SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transports.removeFirst() },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
 
         controller.connect(URI("ws://music.example.local/first"))
@@ -357,6 +360,7 @@ class SendspinConnectionControllerTest {
         return SendspinConnectionController(
             transportFactory = SendspinTransportFactory { transport },
             onSnapshot = snapshots::add,
+            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
         )
     }
 

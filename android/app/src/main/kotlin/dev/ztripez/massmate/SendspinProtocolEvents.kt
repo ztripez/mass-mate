@@ -32,6 +32,9 @@ interface SendspinProtocolEvents {
     /** Handoff for server media [metadata]; native-to-Dart snapshot mapping is not performed here. */
     fun onMetadata(metadata: SendspinMetadata)
 
+    /** Handoff for server time synchronization [time] responses. */
+    fun onServerTime(time: SendspinServerTime)
+
     /** Handoff for validated stream [stream] start descriptors; buffering/audio are deferred. */
     fun onStreamStart(stream: SendspinStreamStart)
 
@@ -67,6 +70,10 @@ class FailHardSendspinProtocolEvents(
     override fun onMetadata(metadata: SendspinMetadata) {
         logger.warn("Received Sendspin metadata before native snapshot ownership exists.")
         throw unsupportedFamily("server/metadata")
+    }
+
+    override fun onServerTime(time: SendspinServerTime) {
+        throw unsupportedFamily("server/time")
     }
 
     override fun onStreamStart(stream: SendspinStreamStart) {

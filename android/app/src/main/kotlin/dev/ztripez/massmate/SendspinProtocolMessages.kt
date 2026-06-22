@@ -26,6 +26,7 @@ class SendspinProtocolDispatcher(
         when (val type = requiredString(json, "type")) {
             SERVER_STATE_TYPE -> events.onServerState(parseServerState(json))
             SERVER_METADATA_TYPE -> events.onMetadata(parseMetadata(json))
+            SERVER_TIME_TYPE -> events.onServerTime(parseServerTime(json))
             STREAM_START_TYPE -> events.onStreamStart(parseStreamStart(json))
             STREAM_CLEAR_TYPE -> events.onStreamClear(parseStreamClear(json))
             STREAM_END_TYPE -> events.onStreamEnd(parseStreamEnd(json))
@@ -57,6 +58,13 @@ class SendspinProtocolDispatcher(
         artist = optionalString(json, "artist"),
         album = optionalString(json, "album"),
         artworkUrl = optionalString(json, "artworkUrl"),
+    )
+
+    private fun parseServerTime(json: JSONObject): SendspinServerTime = SendspinServerTime(
+        requestId = requiredString(json, "requestId"),
+        clientSentAtMs = requiredLong(json, "clientSentAtMs"),
+        serverReceivedAtMs = requiredLong(json, "serverReceivedAtMs"),
+        serverSentAtMs = requiredLong(json, "serverSentAtMs"),
     )
 
     private fun parseStreamStart(json: JSONObject): SendspinStreamStart {
@@ -106,6 +114,7 @@ class SendspinProtocolDispatcher(
 
 private const val SERVER_STATE_TYPE = "server/state"
 private const val SERVER_METADATA_TYPE = "server/metadata"
+private const val SERVER_TIME_TYPE = "server/time"
 private const val STREAM_START_TYPE = "stream/start"
 private const val STREAM_CLEAR_TYPE = "stream/clear"
 private const val STREAM_END_TYPE = "stream/end"
@@ -125,6 +134,9 @@ private fun optionalString(json: JSONObject, field: String): String? =
 
 private fun requiredInt(json: JSONObject, field: String): Int =
     SendspinProtocolJson.requiredInt(json, field, PROTOCOL_MESSAGE_DESCRIPTION)
+
+private fun requiredLong(json: JSONObject, field: String): Long =
+    SendspinProtocolJson.requiredLong(json, field, PROTOCOL_MESSAGE_DESCRIPTION)
 
 private fun optionalLong(json: JSONObject, field: String): Long? =
     SendspinProtocolJson.optionalLong(json, field, PROTOCOL_MESSAGE_DESCRIPTION)
