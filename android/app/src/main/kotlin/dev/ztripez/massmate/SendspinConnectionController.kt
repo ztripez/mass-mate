@@ -25,6 +25,7 @@ import java.net.URI
  * @param protocolLogger Logger for protocol diagnostics before visible failures.
  * @param timingController Native owner for client time requests and server-time synchronization.
  * @param streamBuffer Native owner for stream lifecycle and timestamp-ordered audio frame buffering.
+ * @param audioPipeline Native owner for PCM scheduling and Android audio sink writes.
  * @param streamSnapshotFrameInterval Positive accepted/dropped binary-frame interval for coalesced
  * stream diagnostic snapshots.
  */
@@ -36,6 +37,7 @@ class SendspinConnectionController(
     protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
     private val timingController: SendspinTimingController = SendspinTimingController(),
     private val streamBuffer: SendspinStreamBuffer = SendspinStreamBuffer(),
+    private val audioPipeline: SendspinAudioPipeline = SendspinAudioPipeline(),
     private val streamSnapshotFrameInterval: Int = 64,
 ) {
     init {
@@ -65,7 +67,7 @@ class SendspinConnectionController(
         queue.execute { connectOnQueue(endpoint, onResult) }
     }
 
-    /** Enqueues deliberate disconnect and goodbye when the current protocol state allows it. */
+    /** Enqueues deliberate disconnect, goodbye, transport close, and audio release. */
     fun disconnect(onResult: SendspinLifecycleResult = {}) {
         queue.execute { disconnectOnQueue(onResult) }
     }
@@ -107,6 +109,7 @@ class SendspinConnectionController(
         val nextSessionId = ++sessionId
         timingController.reset()
         streamBuffer.reset()
+        audioPipeline.reset()
         binaryFramesSinceStreamSnapshot = 0
         activeTransport = transport
         activeSession = ActiveSession(nextSessionId)
@@ -277,7 +280,11 @@ class SendspinConnectionController(
         val session = activeSessionIfCurrent(listenerSessionId) ?: return
         if (!session.ready) return
         try {
-            streamBuffer.receiveBinary(bytes)
+            val result = streamBuffer.receiveBinaryResult(bytes)
+            result.acceptedFrame?.let { frame ->
+                audioPipeline.receiveFrame(frame, timingController::stableServerTimeToLocalTimeMs)
+                streamBuffer.consume(frame)
+            }
             binaryFramesSinceStreamSnapshot += 1
             if (binaryFramesSinceStreamSnapshot >= streamSnapshotFrameInterval) {
                 binaryFramesSinceStreamSnapshot = 0
@@ -312,6 +319,7 @@ class SendspinConnectionController(
 
     private fun handleServerTime(time: SendspinServerTime) {
         timingController.recordResponse(time)
+        audioPipeline.drain(timingController::stableServerTimeToLocalTimeMs)
         val transport = activeTransport
         val session = activeSession
         if (transport != null && session?.ready == true) {
@@ -324,24 +332,27 @@ class SendspinConnectionController(
 
     private fun handleStreamStart(stream: SendspinStreamStart) {
         streamBuffer.start(stream)
+        audioPipeline.start(stream)
         binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 
     private fun handleStreamClear(stream: SendspinStreamClear) {
         streamBuffer.clear(stream)
+        audioPipeline.clear(stream)
         binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 
     private fun handleStreamEnd(stream: SendspinStreamEnd) {
         streamBuffer.end(stream)
+        audioPipeline.end(stream)
         binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 
     private fun emitReadySnapshot() {
-        emit(SendspinConnectionSnapshot.ready(nextGeneration(), timingController.snapshot(), streamBuffer.snapshot()))
+        emit(SendspinConnectionSnapshot.ready(nextGeneration(), timingController.snapshot(), streamBuffer.snapshot(), audioPipeline.snapshot()))
     }
 
     private fun handleClosed(listenerSessionId: Long, code: Int, reason: String) {
@@ -380,6 +391,18 @@ class SendspinConnectionController(
         activeTransport = null
         activeSession = null
         sessionId += 1
+        val audioReleaseError = try {
+            audioPipeline.release()
+            null
+        } catch (error: SendspinConnectionException) {
+            error
+        } catch (error: RuntimeException) {
+            SendspinConnectionException(
+                LocalPlayerEnvelope.LOCAL_PLAYER_AUDIO_ERROR,
+                "Failed to release Sendspin audio pipeline.",
+                mapOf("message" to error.message),
+            )
+        }
 
         var closeError: SendspinConnectionException? = null
         if (deliberate && transport != null && session?.clientHelloSent == true) {
@@ -408,19 +431,21 @@ class SendspinConnectionController(
             )
         }
 
-        return aggregateCloseErrors(closeError, transportCloseError)
+        return aggregateCloseErrors(closeError, transportCloseError, audioReleaseError)
     }
 
     private fun aggregateCloseErrors(
         goodbyeError: SendspinConnectionException?,
         transportCloseError: SendspinConnectionException?,
+        audioReleaseError: SendspinConnectionException?,
     ): SendspinConnectionException? {
         val failures = listOfNotNull(
             goodbyeError?.toCloseFailure("goodbye"),
             transportCloseError?.toCloseFailure("transportClose"),
+            audioReleaseError?.toCloseFailure("audioRelease"),
         )
         if (failures.isEmpty()) return null
-        if (failures.size == 1) return goodbyeError ?: transportCloseError
+        if (failures.size == 1) return goodbyeError ?: transportCloseError ?: audioReleaseError
         return SendspinConnectionException(
             LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
             "Multiple Sendspin disconnect failures occurred.",
@@ -428,14 +453,12 @@ class SendspinConnectionController(
         )
     }
 
-    private fun SendspinConnectionException.toCloseFailure(stage: String): Map<String, Any?> {
-        return mapOf(
-            "stage" to stage,
-            "code" to code,
-            "message" to message,
-            "details" to details,
-        )
-    }
+    private fun SendspinConnectionException.toCloseFailure(stage: String): Map<String, Any?> = mapOf(
+        "stage" to stage,
+        "code" to code,
+        "message" to message,
+        "details" to details,
+    )
 
     private fun failCurrentSession(listenerSessionId: Long, error: SendspinConnectionException) {
         activeSessionIfCurrent(listenerSessionId) ?: return
@@ -456,7 +479,7 @@ class SendspinConnectionController(
     }
 
     private fun emitFailed(error: SendspinConnectionException) {
-        emit(SendspinConnectionSnapshot.failed(nextGeneration(), error))
+        emit(SendspinConnectionSnapshot.failed(nextGeneration(), error, audio = audioPipeline.snapshot()))
     }
 
     private fun emit(snapshot: SendspinConnectionSnapshot) {

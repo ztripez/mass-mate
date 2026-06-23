@@ -53,9 +53,9 @@ data class SendspinServerTime(
     val serverSentAtMs: Long,
 )
 
-/** Stream codecs accepted as descriptors without enabling audio output. */
+/** Stream codecs parsed from Sendspin stream descriptors and supported by native stream owners. */
 enum class SendspinStreamCodec(val wireValue: String) {
-    /** Baseline PCM descriptor; actual audio writes are not performed by the buffer owner. */
+    /** Baseline PCM descriptor consumed by the stream buffer and PCM audio pipeline. */
     PCM("pcm"),
 }
 
@@ -63,7 +63,7 @@ enum class SendspinStreamCodec(val wireValue: String) {
  * Stream-start descriptor for the native stream buffer owner.
  *
  * @property streamId Required server stream identifier for binary frames.
- * @property codec Required validated codec descriptor. Validation does not claim audio support.
+ * @property codec Required validated codec descriptor supported by the native stream/audio owners.
  * @property sampleRateHz Required sample rate in hertz. Unsupported values fail during parse.
  * @property channels Required channel count. Unsupported counts fail during parse.
  */

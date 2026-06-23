@@ -32,6 +32,9 @@ object LocalPlayerEnvelope {
     /** Native backend rejected a valid request without treating it as a transport crash. */
     const val LOCAL_PLAYER_REJECTED = "LOCAL_PLAYER_REJECTED"
 
+    /** Android audio sink setup, scheduling, write, flush, stop, or release failure. */
+    const val LOCAL_PLAYER_AUDIO_ERROR = "LOCAL_PLAYER_AUDIO_ERROR"
+
     /** User-visible message for intent requests before handshake readiness. */
     const val NOT_CONNECTED_MESSAGE = "Native local player is not connected."
 
@@ -98,6 +101,7 @@ object LocalPlayerEnvelope {
             "isPlaying" to false,
             "timing" to snapshot.timing.toBridgeMap(),
             "stream" to snapshot.stream.toBridgeMap(),
+            "audio" to snapshot.audio.toBridgeMap(),
         ).apply {
             if (error != null) this["error"] = error
         }
