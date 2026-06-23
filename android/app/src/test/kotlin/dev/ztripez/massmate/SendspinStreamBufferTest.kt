@@ -41,15 +41,41 @@ class SendspinStreamBufferTest {
 
         buffer.start(streamStart("stream-1"))
         buffer.receiveBinary(frameBytes(streamId = "stream-1", timestampMs = 1_000L, sequence = 1L))
+        val expectedFrame = buffer.bufferedFrames().single()
+        val expectedSnapshot = buffer.snapshot()
         val duplicate = buffer.receiveBinary(frameBytes(streamId = "stream-1", timestampMs = 1_100L, sequence = 1L))
+        assertBufferUnchanged(buffer, expectedFrame, expectedSnapshot, droppedFrameCount = 1L)
         val wrongStream = buffer.receiveBinary(frameBytes(streamId = "stream-2", timestampMs = 1_200L, sequence = 2L))
+        assertBufferUnchanged(buffer, expectedFrame, expectedSnapshot, droppedFrameCount = 2L)
         val full = buffer.receiveBinary(frameBytes(streamId = "stream-1", timestampMs = 1_300L, sequence = 3L))
+        assertBufferUnchanged(buffer, expectedFrame, expectedSnapshot, droppedFrameCount = 3L)
 
         assertEquals("duplicate-sequence", duplicate.lastDropReason)
         assertEquals("stream-mismatch", wrongStream.lastDropReason)
         assertEquals("buffer-full", full.lastDropReason)
         assertEquals(3L, full.droppedFrameCount)
         assertEquals(1, full.frameCount)
+    }
+
+    @Test
+    fun parserReadsIndependentBigEndianWireFixture() {
+        val bytes = byteArrayOf(
+            0x53, 0x53, 0x41, 0x46,
+            0x01,
+            0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xe8.toByte(),
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x03,
+            0x73, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x2d, 0x31,
+            0x0a, 0x0b, 0x0c,
+        )
+
+        val frame = SendspinBinaryFrameParser.parse(bytes)
+
+        assertEquals("stream-1", frame.streamId)
+        assertEquals(1_000L, frame.timestampMs)
+        assertEquals(2L, frame.sequence)
+        assertArrayEquals(byteArrayOf(0x0a, 0x0b, 0x0c), frame.payload)
     }
 
     @Test
@@ -91,6 +117,29 @@ class SendspinStreamBufferTest {
     }
 
     @Test
+    fun mismatchedStreamClearAndEndFailLoudly() {
+        val buffer = SendspinStreamBuffer()
+
+        buffer.start(streamStart("stream-1"))
+
+        assertProtocolError {
+            buffer.clear(SendspinStreamClear("stream-2"))
+        }
+        assertProtocolError {
+            buffer.end(SendspinStreamEnd("stream-2"))
+        }
+    }
+
+    @Test
+    fun streamEndWithoutActiveStreamFailsLoudly() {
+        val buffer = SendspinStreamBuffer()
+
+        assertProtocolError {
+            buffer.end(SendspinStreamEnd("stream-1"))
+        }
+    }
+
+    @Test
     fun malformedBinaryFrameFailsLoudlyWhenStreamIsActive() {
         val buffer = SendspinStreamBuffer()
 
@@ -98,6 +147,17 @@ class SendspinStreamBufferTest {
 
         assertProtocolError {
             buffer.receiveBinary(byteArrayOf(0x01, 0x02))
+        }
+    }
+
+    @Test
+    fun malformedUtf8StreamIdFailsLoudlyWhenStreamIsActive() {
+        val buffer = SendspinStreamBuffer()
+
+        buffer.start(streamStart("stream-1"))
+
+        assertProtocolError {
+            buffer.receiveBinary(frameWithMalformedUtf8StreamId())
         }
     }
 
@@ -113,13 +173,17 @@ class SendspinStreamBufferTest {
         timestampMs: Long,
         sequence: Long,
         payload: ByteArray = byteArrayOf(0x01),
-    ): ByteArray = SendspinBinaryFrameParser.encode(
-        SendspinAudioFrame(
-            streamId = streamId,
-            timestampMs = timestampMs,
-            sequence = sequence,
-            payload = payload,
-        ),
+    ): ByteArray = sendspinBinaryFrameBytes(streamId, timestampMs, sequence, payload)
+
+    private fun frameWithMalformedUtf8StreamId(): ByteArray = byteArrayOf(
+        0x53, 0x53, 0x41, 0x46,
+        0x01,
+        0x01,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xe8.toByte(),
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x01,
+        0x80.toByte(),
+        0x01,
     )
 
     private fun assertProtocolError(block: () -> Unit) {
@@ -130,5 +194,27 @@ class SendspinStreamBufferTest {
             return
         }
         throw AssertionError("Expected SendspinConnectionException")
+    }
+
+    private fun assertBufferUnchanged(
+        buffer: SendspinStreamBuffer,
+        expectedFrame: SendspinAudioFrame,
+        expectedSnapshot: SendspinStreamBufferSnapshot,
+        droppedFrameCount: Long,
+    ) {
+        val frames = buffer.bufferedFrames()
+        val snapshot = buffer.snapshot()
+        assertEquals(1, frames.size)
+        assertEquals(expectedFrame.streamId, frames.single().streamId)
+        assertEquals(expectedFrame.timestampMs, frames.single().timestampMs)
+        assertEquals(expectedFrame.sequence, frames.single().sequence)
+        assertArrayEquals(expectedFrame.payload, frames.single().payload)
+        assertEquals(expectedSnapshot.active, snapshot.active)
+        assertEquals(expectedSnapshot.streamId, snapshot.streamId)
+        assertEquals(expectedSnapshot.codec, snapshot.codec)
+        assertEquals(expectedSnapshot.frameCount, snapshot.frameCount)
+        assertEquals(expectedSnapshot.bufferDepthMs, snapshot.bufferDepthMs)
+        assertEquals(expectedSnapshot.missingFrameCount, snapshot.missingFrameCount)
+        assertEquals(droppedFrameCount, snapshot.droppedFrameCount)
     }
 }

@@ -69,7 +69,7 @@ class SendspinProtocolDispatcher(
 
     private fun parseStreamStart(json: JSONObject): SendspinStreamStart {
         return SendspinStreamStart(
-            streamId = requiredString(json, "streamId"),
+            streamId = requiredNonBlankString(json, "streamId"),
             codec = parseStreamCodec(requiredString(json, "codec")),
             sampleRateHz = supportedInt("sampleRateHz", requiredInt(json, "sampleRateHz"), supportedSampleRateHz),
             channels = supportedInt("channels", requiredInt(json, "channels"), supportedChannelCounts),
@@ -77,11 +77,11 @@ class SendspinProtocolDispatcher(
     }
 
     private fun parseStreamClear(json: JSONObject): SendspinStreamClear = SendspinStreamClear(
-        streamId = optionalString(json, "streamId"),
+        streamId = optionalNonBlankString(json, "streamId"),
     )
 
     private fun parseStreamEnd(json: JSONObject): SendspinStreamEnd = SendspinStreamEnd(
-        streamId = requiredString(json, "streamId"),
+        streamId = requiredNonBlankString(json, "streamId"),
         reason = optionalString(json, "reason"),
     )
 
@@ -131,6 +131,28 @@ private fun requiredString(json: JSONObject, field: String): String =
 
 private fun optionalString(json: JSONObject, field: String): String? =
     SendspinProtocolJson.optionalString(json, field, PROTOCOL_MESSAGE_DESCRIPTION)
+
+private fun requiredNonBlankString(json: JSONObject, field: String): String {
+    val value = requiredString(json, field)
+    if (value.isBlank()) {
+        throw SendspinProtocolJson.protocolError(
+            "Sendspin protocol message field `$field` must not be blank.",
+            mapOf("field" to field),
+        )
+    }
+    return value
+}
+
+private fun optionalNonBlankString(json: JSONObject, field: String): String? {
+    val value = optionalString(json, field) ?: return null
+    if (value.isBlank()) {
+        throw SendspinProtocolJson.protocolError(
+            "Sendspin protocol message field `$field` must not be blank when present.",
+            mapOf("field" to field),
+        )
+    }
+    return value
+}
 
 private fun requiredInt(json: JSONObject, field: String): Int =
     SendspinProtocolJson.requiredInt(json, field, PROTOCOL_MESSAGE_DESCRIPTION)

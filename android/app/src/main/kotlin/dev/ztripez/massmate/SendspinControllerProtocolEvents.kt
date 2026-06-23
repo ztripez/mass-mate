@@ -1,12 +1,13 @@
 package dev.ztripez.massmate
 
 /**
- * Protocol event adapter that keeps `server/time` controller-owned and delegates other families.
+ * Protocol event adapter that keeps `server/time` and stream lifecycle events controller-owned.
  *
  * `server/time` is first offered to [delegate] when present. If the delegate throws, controller
  * timing is not updated and the caller sees the same visible protocol failure path as other event
  * failures. If the delegate accepts or is absent, [handleServerTime] updates controller-owned
- * timing state.
+ * timing state. Stream lifecycle events follow the same delegate-first rule before updating the
+ * controller-owned stream buffer.
  *
  * @param delegate Optional native event owner used by focused tests or future feature owners.
  * @param failHardEvents Production fail-hard owner for supported families that are not implemented.

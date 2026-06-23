@@ -107,6 +107,30 @@ class SendspinProtocolDispatcherTest {
         assertProtocolError {
             SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
                 json("stream/start")
+                    .put("streamId", "")
+                    .put("codec", "pcm")
+                    .put("sampleRateHz", 48000)
+                    .put("channels", 2)
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/clear")
+                    .put("streamId", "  ")
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/end")
+                    .put("streamId", "")
+                    .toString(),
+            )
+        }
+        assertProtocolError {
+            SendspinProtocolDispatcher(logger = RecordingLogger()).dispatch(
+                json("stream/start")
                     .put("streamId", "stream-1")
                     .put("codec", "pcm")
                     .put("sampleRateHz", "48000")

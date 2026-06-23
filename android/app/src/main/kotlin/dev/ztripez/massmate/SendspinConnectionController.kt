@@ -25,6 +25,8 @@ import java.net.URI
  * @param protocolLogger Logger for protocol diagnostics before visible failures.
  * @param timingController Native owner for client time requests and server-time synchronization.
  * @param streamBuffer Native owner for stream lifecycle and timestamp-ordered audio frame buffering.
+ * @param streamSnapshotFrameInterval Positive accepted/dropped binary-frame interval for coalesced
+ * stream diagnostic snapshots.
  */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
@@ -34,11 +36,17 @@ class SendspinConnectionController(
     protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
     private val timingController: SendspinTimingController = SendspinTimingController(),
     private val streamBuffer: SendspinStreamBuffer = SendspinStreamBuffer(),
+    private val streamSnapshotFrameInterval: Int = 64,
 ) {
+    init {
+        require(streamSnapshotFrameInterval > 0) { "streamSnapshotFrameInterval must be positive." }
+    }
+
     private var sessionId = 0L
     private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
+    private var binaryFramesSinceStreamSnapshot = 0
     private val failHardProtocolEvents = FailHardSendspinProtocolEvents(protocolLogger)
     private val dispatcher = SendspinProtocolDispatcher(
         logger = protocolLogger,
@@ -99,6 +107,7 @@ class SendspinConnectionController(
         val nextSessionId = ++sessionId
         timingController.reset()
         streamBuffer.reset()
+        binaryFramesSinceStreamSnapshot = 0
         activeTransport = transport
         activeSession = ActiveSession(nextSessionId)
         emit(SendspinConnectionSnapshot.connecting(nextGeneration(), endpoint))
@@ -269,7 +278,11 @@ class SendspinConnectionController(
         if (!session.ready) return
         try {
             streamBuffer.receiveBinary(bytes)
-            emitReadySnapshot()
+            binaryFramesSinceStreamSnapshot += 1
+            if (binaryFramesSinceStreamSnapshot >= streamSnapshotFrameInterval) {
+                binaryFramesSinceStreamSnapshot = 0
+                emitReadySnapshot()
+            }
         } catch (error: SendspinConnectionException) {
             failCurrentSession(listenerSessionId, error)
         } catch (error: RuntimeException) {
@@ -311,16 +324,19 @@ class SendspinConnectionController(
 
     private fun handleStreamStart(stream: SendspinStreamStart) {
         streamBuffer.start(stream)
+        binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 
     private fun handleStreamClear(stream: SendspinStreamClear) {
         streamBuffer.clear(stream)
+        binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 
     private fun handleStreamEnd(stream: SendspinStreamEnd) {
         streamBuffer.end(stream)
+        binaryFramesSinceStreamSnapshot = 0
         emitReadySnapshot()
     }
 

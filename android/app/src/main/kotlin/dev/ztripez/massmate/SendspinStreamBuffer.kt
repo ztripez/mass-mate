@@ -2,6 +2,8 @@ package dev.ztripez.massmate
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.TreeMap
 
@@ -124,30 +126,10 @@ object SendspinBinaryFrameParser {
         }
         val streamIdBytes = ByteArray(streamIdLength)
         buffer.get(streamIdBytes)
-        val streamId = String(streamIdBytes, StandardCharsets.UTF_8)
+        val streamId = decodeStreamId(streamIdBytes)
         val payload = ByteArray(payloadLength)
         buffer.get(payload)
         return SendspinAudioFrame(streamId, timestampMs, sequence, payload)
-    }
-
-    /** Builds a binary frame envelope for deterministic fake transport tests. */
-    fun encode(frame: SendspinAudioFrame): ByteArray {
-        val streamIdBytes = frame.streamId.toByteArray(StandardCharsets.UTF_8)
-        require(streamIdBytes.size in 1..255) { "streamId must encode to 1..255 bytes." }
-        require(frame.timestampMs >= 0L) { "timestampMs must be non-negative." }
-        require(frame.sequence >= 0L) { "sequence must be non-negative." }
-        require(frame.payload.isNotEmpty()) { "payload must be non-empty." }
-        val buffer = ByteBuffer.allocate(HEADER_SIZE + streamIdBytes.size + frame.payload.size)
-            .order(ByteOrder.BIG_ENDIAN)
-        buffer.put(magic)
-        buffer.put(VERSION)
-        buffer.put(streamIdBytes.size.toByte())
-        buffer.putLong(frame.timestampMs)
-        buffer.putLong(frame.sequence)
-        buffer.putInt(frame.payload.size)
-        buffer.put(streamIdBytes)
-        buffer.put(frame.payload)
-        return buffer.array()
     }
 
     private fun checkedFrameSize(streamIdLength: Int, payloadLength: Int): Int = try {
@@ -158,9 +140,27 @@ object SendspinBinaryFrameParser {
 
     private fun protocolError(message: String, details: Map<String, Any?>? = null): SendspinConnectionException =
         SendspinProtocolJson.protocolError(message, details)
+
+    private fun decodeStreamId(bytes: ByteArray): String {
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        return try {
+            decoder.decode(ByteBuffer.wrap(bytes)).toString()
+        } catch (error: CharacterCodingException) {
+            throw protocolError("Sendspin binary frame stream id is not valid UTF-8.")
+        }
+    }
 }
 
-/** Owns active Sendspin stream lifecycle and the timestamp-ordered frame buffer. */
+/**
+ * Owns active Sendspin stream lifecycle and the timestamp-ordered frame buffer.
+ *
+ * Instances are mutable and must be called by a single serialized owner, such as the Sendspin
+ * connection controller queue.
+ *
+ * @param config Buffer capacity and validation thresholds for queued audio frames.
+ */
 class SendspinStreamBuffer(
     private val config: SendspinStreamBufferConfig = SendspinStreamBufferConfig(),
 ) {
@@ -190,32 +190,54 @@ class SendspinStreamBuffer(
         return snapshot()
     }
 
-    /** Clears queued frames for [clear] while preserving a matching active stream. */
+    /**
+     * Clears queued frames for [clear] while preserving a matching active stream.
+     *
+     * @throws SendspinConnectionException when [clear] names a stream other than the active stream,
+     * or names a stream while no stream is active.
+     */
     fun clear(clear: SendspinStreamClear): SendspinStreamBufferSnapshot {
         val active = activeStream
-        if (active == null || clear.streamId == null || clear.streamId == active.streamId) {
-            clearBuffer()
+        when {
+            active == null && clear.streamId != null -> throw lifecycleMismatch("stream/clear", clear.streamId, null)
+            active == null || clear.streamId == null || clear.streamId == active.streamId -> clearBuffer()
+            else -> throw lifecycleMismatch("stream/clear", clear.streamId, active.streamId)
         }
         return snapshot()
     }
 
-    /** Ends [end]'s matching active stream and clears stream-owned state. */
+    /**
+     * Ends [end]'s matching active stream and clears stream-owned state.
+     *
+     * @throws SendspinConnectionException when no stream is active or [end] names a different
+     * stream than the active stream.
+     */
     fun end(end: SendspinStreamEnd): SendspinStreamBufferSnapshot {
-        if (activeStream?.streamId == end.streamId) {
+        val active = activeStream ?: throw lifecycleMismatch("stream/end", end.streamId, null)
+        if (active.streamId == end.streamId) {
             activeStream = null
             clearBuffer()
+        } else {
+            throw lifecycleMismatch("stream/end", end.streamId, active.streamId)
         }
         return snapshot()
     }
 
-    /** Parses and buffers [bytes], returning updated stream diagnostics. */
+    /**
+     * Parses and buffers [bytes], returning updated stream diagnostics.
+     *
+     * Binary frames are dropped with visible counters when no stream is active, the stream id does
+     * not match, the sequence is duplicate, or the bounded buffer is full. Malformed active-stream
+     * frames throw [SendspinConnectionException] with `LOCAL_PLAYER_PROTOCOL_ERROR` before any
+     * lifecycle drop handling.
+     */
     fun receiveBinary(bytes: ByteArray): SendspinStreamBufferSnapshot {
+        val frame = SendspinBinaryFrameParser.parse(bytes)
         val active = activeStream
         if (active == null) {
             drop("no-active-stream")
             return snapshot()
         }
-        val frame = SendspinBinaryFrameParser.parse(bytes)
         if (frame.streamId != active.streamId) {
             drop("stream-mismatch")
             return snapshot()
@@ -294,9 +316,18 @@ class SendspinStreamBuffer(
     }
 
     private fun drop(reason: String) {
-        droppedFrameCount += 1L
+        droppedFrameCount = checkedAdd(droppedFrameCount, 1L, "droppedFrameCount")
         lastDropReason = reason
     }
+
+    private fun lifecycleMismatch(
+        type: String,
+        receivedStreamId: String?,
+        activeStreamId: String?,
+    ): SendspinConnectionException = SendspinProtocolJson.protocolError(
+        "Sendspin `$type` targeted a stream other than the active stream.",
+        mapOf("streamId" to receivedStreamId, "activeStreamId" to activeStreamId),
+    )
 
     private data class FrameKey(
         val timestampMs: Long,

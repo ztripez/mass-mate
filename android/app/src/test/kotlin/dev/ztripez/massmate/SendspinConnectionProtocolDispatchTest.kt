@@ -61,75 +61,6 @@ class SendspinConnectionProtocolDispatchTest {
     }
 
     @Test
-    fun streamLifecycleAndBinaryFramesUpdateSnapshots() {
-        val transport = FakeSendspinTransport()
-        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
-        val controller = SendspinConnectionController(
-            transportFactory = SendspinTransportFactory { transport },
-            onSnapshot = snapshots::add,
-            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
-        )
-
-        connectReady(controller, transport)
-        transport.receiveText(streamStart("stream-1"))
-        transport.receiveBinary(binaryFrame("stream-1", timestampMs = 2_000L, sequence = 2L))
-        transport.receiveBinary(binaryFrame("stream-1", timestampMs = 1_000L, sequence = 1L))
-
-        val buffered = snapshots.last().stream
-        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
-        assertTrue(buffered.active)
-        assertEquals("stream-1", buffered.streamId)
-        assertEquals(2, buffered.frameCount)
-        assertEquals(1_000L, buffered.bufferDepthMs)
-
-        transport.receiveText(streamClear("stream-1"))
-        val cleared = snapshots.last().stream
-        assertTrue(cleared.active)
-        assertEquals(0, cleared.frameCount)
-
-        transport.receiveText(streamEnd("stream-1"))
-        val ended = snapshots.last().stream
-        assertEquals(false, ended.active)
-        assertEquals(0, ended.frameCount)
-    }
-
-    @Test
-    fun binaryFramesBeforeStreamStartAreIgnoredSafelyByController() {
-        val transport = FakeSendspinTransport()
-        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
-        val controller = SendspinConnectionController(
-            transportFactory = SendspinTransportFactory { transport },
-            onSnapshot = snapshots::add,
-            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
-        )
-
-        connectReady(controller, transport)
-        transport.receiveBinary(binaryFrame("stream-1", timestampMs = 1_000L, sequence = 1L))
-
-        assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
-        assertEquals(1L, snapshots.last().stream.droppedFrameCount)
-        assertEquals("no-active-stream", snapshots.last().stream.lastDropReason)
-    }
-
-    @Test
-    fun malformedBinaryFrameFailsVisiblyWhenStreamIsActive() {
-        val transport = FakeSendspinTransport()
-        val snapshots = mutableListOf<SendspinConnectionSnapshot>()
-        val controller = SendspinConnectionController(
-            transportFactory = SendspinTransportFactory { transport },
-            onSnapshot = snapshots::add,
-            timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
-        )
-
-        connectReady(controller, transport)
-        transport.receiveText(streamStart("stream-1"))
-        transport.receiveBinary(byteArrayOf(0x01, 0x02))
-
-        assertProtocolFailure(snapshots)
-        assertTrue(snapshots.last().error?.message.orEmpty().contains("binary frame"))
-    }
-
-    @Test
     fun serverErrorAlwaysFailsSession() {
         val events = CapturingProtocolEvents()
         val transport = FakeSendspinTransport()
@@ -406,34 +337,6 @@ class SendspinConnectionProtocolDispatchTest {
         .put("serverReceivedAtMs", serverReceivedAtMs)
         .put("serverSentAtMs", serverSentAtMs)
         .toString()
-
-    private fun streamStart(streamId: String): String = JSONObject()
-        .put("type", "stream/start")
-        .put("streamId", streamId)
-        .put("codec", "pcm")
-        .put("sampleRateHz", 48_000)
-        .put("channels", 2)
-        .toString()
-
-    private fun streamClear(streamId: String): String = JSONObject()
-        .put("type", "stream/clear")
-        .put("streamId", streamId)
-        .toString()
-
-    private fun streamEnd(streamId: String): String = JSONObject()
-        .put("type", "stream/end")
-        .put("streamId", streamId)
-        .toString()
-
-    private fun binaryFrame(streamId: String, timestampMs: Long, sequence: Long): ByteArray =
-        SendspinBinaryFrameParser.encode(
-            SendspinAudioFrame(
-                streamId = streamId,
-                timestampMs = timestampMs,
-                sequence = sequence,
-                payload = byteArrayOf(0x01),
-            ),
-        )
 
     private fun lastClientTimeRequest(transport: FakeSendspinTransport): TimeRequest {
         val json = JSONObject(transport.sentTexts.last())

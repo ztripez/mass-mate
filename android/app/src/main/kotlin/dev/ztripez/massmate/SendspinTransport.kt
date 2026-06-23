@@ -36,7 +36,12 @@ interface SendspinTransport {
         /** A text frame arrived for handshake parsing or native protocol dispatch. */
         fun onText(text: String)
 
-        /** A binary frame arrived for native stream buffering. */
+        /**
+         * A binary frame arrived for native stream buffering.
+         *
+         * Implementations pass raw frame bytes without parsing or retaining them. The controller
+         * owns malformed-frame failure, active-stream validation, and bounded diagnostics emission.
+         */
         fun onBinary(bytes: ByteArray)
 
         /** The WebSocket closed without an explicit service disconnect. */
