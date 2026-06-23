@@ -16,7 +16,7 @@ import java.net.URI
  * snapshots. [sendRawClientCommand] is native protocol serialization only; Flutter
  * intent-to-command mapping remains unimplemented in this controller.
  *
- * @param transportFactory Creates a fresh text transport for each new Sendspin connection attempt.
+ * @param transportFactory Creates a fresh transport for each new Sendspin connection attempt.
  * @param onSnapshot Receives every lifecycle snapshot emitted by the controller.
  * @param queue Serializes lifecycle calls and transport callbacks; defaults to immediate execution
  * for deterministic unit tests.
@@ -24,6 +24,9 @@ import java.net.URI
  * selects [FailHardSendspinProtocolEvents], which fails visibly for families without owners.
  * @param protocolLogger Logger for protocol diagnostics before visible failures.
  * @param timingController Native owner for client time requests and server-time synchronization.
+ * @param streamBuffer Native owner for stream lifecycle and timestamp-ordered audio frame buffering.
+ * @param streamSnapshotFrameInterval Positive accepted/dropped binary-frame interval for coalesced
+ * stream diagnostic snapshots.
  */
 class SendspinConnectionController(
     private val transportFactory: SendspinTransportFactory,
@@ -32,11 +35,18 @@ class SendspinConnectionController(
     protocolEvents: SendspinProtocolEvents? = null,
     protocolLogger: SendspinProtocolLogger = JavaUtilSendspinProtocolLogger,
     private val timingController: SendspinTimingController = SendspinTimingController(),
+    private val streamBuffer: SendspinStreamBuffer = SendspinStreamBuffer(),
+    private val streamSnapshotFrameInterval: Int = 64,
 ) {
+    init {
+        require(streamSnapshotFrameInterval > 0) { "streamSnapshotFrameInterval must be positive." }
+    }
+
     private var sessionId = 0L
     private var snapshotGeneration = 0L
     private var activeTransport: SendspinTransport? = null
     private var activeSession: ActiveSession? = null
+    private var binaryFramesSinceStreamSnapshot = 0
     private val failHardProtocolEvents = FailHardSendspinProtocolEvents(protocolLogger)
     private val dispatcher = SendspinProtocolDispatcher(
         logger = protocolLogger,
@@ -44,6 +54,9 @@ class SendspinConnectionController(
             delegate = protocolEvents,
             failHardEvents = failHardProtocolEvents,
             handleServerTime = ::handleServerTime,
+            handleStreamStart = ::handleStreamStart,
+            handleStreamClear = ::handleStreamClear,
+            handleStreamEnd = ::handleStreamEnd,
         ),
     )
 
@@ -93,6 +106,8 @@ class SendspinConnectionController(
         }
         val nextSessionId = ++sessionId
         timingController.reset()
+        streamBuffer.reset()
+        binaryFramesSinceStreamSnapshot = 0
         activeTransport = transport
         activeSession = ActiveSession(nextSessionId)
         emit(SendspinConnectionSnapshot.connecting(nextGeneration(), endpoint))
@@ -130,6 +145,7 @@ class SendspinConnectionController(
         return object : SendspinTransport.Listener {
             override fun onOpen() = queue.execute { handleOpen(listenerSessionId, transport) }
             override fun onText(text: String) = queue.execute { handleText(listenerSessionId, text) }
+            override fun onBinary(bytes: ByteArray) = queue.execute { handleBinary(listenerSessionId, bytes) }
             override fun onClosed(code: Int, reason: String) =
                 queue.execute { handleClosed(listenerSessionId, code, reason) }
 
@@ -257,6 +273,30 @@ class SendspinConnectionController(
         }
     }
 
+    private fun handleBinary(listenerSessionId: Long, bytes: ByteArray) {
+        val session = activeSessionIfCurrent(listenerSessionId) ?: return
+        if (!session.ready) return
+        try {
+            streamBuffer.receiveBinary(bytes)
+            binaryFramesSinceStreamSnapshot += 1
+            if (binaryFramesSinceStreamSnapshot >= streamSnapshotFrameInterval) {
+                binaryFramesSinceStreamSnapshot = 0
+                emitReadySnapshot()
+            }
+        } catch (error: SendspinConnectionException) {
+            failCurrentSession(listenerSessionId, error)
+        } catch (error: RuntimeException) {
+            failCurrentSession(
+                listenerSessionId,
+                SendspinConnectionException(
+                    LocalPlayerEnvelope.LOCAL_PLAYER_PROTOCOL_ERROR,
+                    "Sendspin binary frame could not be buffered.",
+                    mapOf("message" to error.message),
+                ),
+            )
+        }
+    }
+
     private fun sendInitialClientProtocolStatus(listenerSessionId: Long) {
         val transport = activeTransport ?: throw SendspinConnectionException(
             LocalPlayerEnvelope.LOCAL_PLAYER_TRANSPORT_ERROR,
@@ -282,8 +322,26 @@ class SendspinConnectionController(
         emitReadySnapshot()
     }
 
+    private fun handleStreamStart(stream: SendspinStreamStart) {
+        streamBuffer.start(stream)
+        binaryFramesSinceStreamSnapshot = 0
+        emitReadySnapshot()
+    }
+
+    private fun handleStreamClear(stream: SendspinStreamClear) {
+        streamBuffer.clear(stream)
+        binaryFramesSinceStreamSnapshot = 0
+        emitReadySnapshot()
+    }
+
+    private fun handleStreamEnd(stream: SendspinStreamEnd) {
+        streamBuffer.end(stream)
+        binaryFramesSinceStreamSnapshot = 0
+        emitReadySnapshot()
+    }
+
     private fun emitReadySnapshot() {
-        emit(SendspinConnectionSnapshot.ready(nextGeneration(), timingController.snapshot()))
+        emit(SendspinConnectionSnapshot.ready(nextGeneration(), timingController.snapshot(), streamBuffer.snapshot()))
     }
 
     private fun handleClosed(listenerSessionId: Long, code: Int, reason: String) {

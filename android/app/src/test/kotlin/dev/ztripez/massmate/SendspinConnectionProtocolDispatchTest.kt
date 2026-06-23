@@ -47,10 +47,6 @@ class SendspinConnectionProtocolDispatchTest {
     fun productionDispatchFailsKnownUnsupportedFamilies() {
         val stateSnapshots = readySnapshotsBefore("{\"type\":\"server/state\",\"playbackState\":\"playing\"}")
         val metadataSnapshots = readySnapshotsBefore("{\"type\":\"server/metadata\",\"title\":\"Track\"}")
-        val streamSnapshots = readySnapshotsBefore(
-            "{\"type\":\"stream/start\",\"streamId\":\"stream-1\",\"codec\":\"pcm\",\"sampleRateHz\":48000," +
-                "\"channels\":2}",
-        )
         val commandSnapshots = readySnapshotsBefore("{\"type\":\"server/command\",\"command\":\"pause\"}")
         val statusSnapshots = readySnapshotsBefore("{\"type\":\"server/status\",\"status\":\"ok\"}")
 
@@ -58,8 +54,6 @@ class SendspinConnectionProtocolDispatchTest {
         assertTrue(stateSnapshots.last().error?.message.orEmpty().contains("server/state"))
         assertProtocolFailure(metadataSnapshots)
         assertTrue(metadataSnapshots.last().error?.message.orEmpty().contains("server/metadata"))
-        assertProtocolFailure(streamSnapshots)
-        assertTrue(streamSnapshots.last().error?.message.orEmpty().contains("stream/start"))
         assertProtocolFailure(commandSnapshots)
         assertTrue(commandSnapshots.last().error?.message.orEmpty().contains("server/command"))
         assertProtocolFailure(statusSnapshots)
