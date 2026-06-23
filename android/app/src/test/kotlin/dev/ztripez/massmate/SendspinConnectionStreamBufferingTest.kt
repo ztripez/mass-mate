@@ -26,8 +26,9 @@ class SendspinConnectionStreamBufferingTest {
         assertEquals(SendspinConnectionStatus.READY, snapshots.last().status)
         assertTrue(buffered.active)
         assertEquals("stream-1", buffered.streamId)
-        assertEquals(2, buffered.frameCount)
-        assertEquals(1_000L, buffered.bufferDepthMs)
+        assertEquals(0, buffered.frameCount)
+        assertEquals(0L, buffered.bufferDepthMs)
+        assertEquals(2, snapshots.last().audio.queuedFrameCount)
 
         transport.receiveText(streamClear("stream-1"))
         val cleared = snapshots.last().stream
@@ -117,7 +118,7 @@ class SendspinConnectionStreamBufferingTest {
         assertEquals(true, stream["active"])
         assertEquals("stream-1", stream["streamId"])
         assertEquals("pcm", stream["codec"])
-        assertEquals(1, stream["frameCount"])
+        assertEquals(0, stream["frameCount"])
         assertEquals(0L, stream["bufferDepthMs"])
         assertEquals(0L, stream["droppedFrameCount"])
         assertEquals(0L, stream["missingFrameCount"])
@@ -132,6 +133,7 @@ class SendspinConnectionStreamBufferingTest {
         transportFactory = SendspinTransportFactory { transport },
         onSnapshot = snapshots::add,
         timingController = SendspinTimingController(monotonicClock = SendspinMonotonicClock { 1_000L }),
+        audioPipeline = SendspinAudioPipeline(sinkFactory = FakeSendspinAudioSinkFactory()),
         streamSnapshotFrameInterval = streamSnapshotFrameInterval,
     )
 
@@ -166,7 +168,7 @@ class SendspinConnectionStreamBufferingTest {
         .toString()
 
     private fun binaryFrame(streamId: String, timestampMs: Long, sequence: Long): ByteArray =
-        sendspinBinaryFrameBytes(streamId, timestampMs, sequence)
+        sendspinBinaryFrameBytes(streamId, timestampMs, sequence, payload = byteArrayOf(0x01, 0x02, 0x03, 0x04))
 
     private fun assertProtocolFailure(snapshots: List<SendspinConnectionSnapshot>) {
         assertEquals(SendspinConnectionStatus.FAILED, snapshots.last().status)

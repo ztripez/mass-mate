@@ -31,6 +31,7 @@ enum class SendspinConnectionStatus(val bridgeValue: String) {
  * @property mediaSubtitle Placeholder subtitle sent through the existing player snapshot bridge.
  * @property timing Native clock synchronization diagnostics for local-player debug snapshots.
  * @property stream Native stream lifecycle and frame-buffer diagnostics for local-player snapshots.
+ * @property audio Native PCM audio output diagnostics for local-player snapshots.
  * @property error Failure code, message, and details for [SendspinConnectionStatus.FAILED].
  */
 data class SendspinConnectionSnapshot(
@@ -41,6 +42,7 @@ data class SendspinConnectionSnapshot(
     val mediaSubtitle: String,
     val timing: SendspinClockSnapshot = SendspinClockSnapshot.unsynchronized(),
     val stream: SendspinStreamBufferSnapshot = SendspinStreamBufferSnapshot.inactive(),
+    val audio: SendspinAudioPipelineSnapshot = SendspinAudioPipelineSnapshot.inactive(),
     val error: SendspinConnectionException? = null,
 ) {
     companion object {
@@ -67,12 +69,14 @@ data class SendspinConnectionSnapshot(
          * Creates a ready snapshot after a validated handshake.
          *
          * [timing] carries native clock synchronization diagnostics for debug snapshot consumers and
-         * [stream] carries native stream-buffer diagnostics.
+         * [stream] carries native stream-buffer diagnostics and [audio] carries native audio-output
+         * diagnostics.
          */
         fun ready(
             generation: Long,
             timing: SendspinClockSnapshot = SendspinClockSnapshot.unsynchronized(),
             stream: SendspinStreamBufferSnapshot = SendspinStreamBufferSnapshot.inactive(),
+            audio: SendspinAudioPipelineSnapshot = SendspinAudioPipelineSnapshot.inactive(),
         ): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
             generation = generation,
             status = SendspinConnectionStatus.READY,
@@ -81,18 +85,21 @@ data class SendspinConnectionSnapshot(
             mediaSubtitle = "Handshake complete",
             timing = timing,
             stream = stream,
+            audio = audio,
         )
 
         /** Creates a failed snapshot carrying [error] details. */
         fun failed(
             generation: Long,
             error: SendspinConnectionException,
+            audio: SendspinAudioPipelineSnapshot = SendspinAudioPipelineSnapshot.inactive(),
         ): SendspinConnectionSnapshot = SendspinConnectionSnapshot(
             generation = generation,
             status = SendspinConnectionStatus.FAILED,
             connectionLabel = "Sendspin local player failed",
             mediaTitle = "Local player failed",
             mediaSubtitle = error.message,
+            audio = audio,
             error = error,
         )
     }

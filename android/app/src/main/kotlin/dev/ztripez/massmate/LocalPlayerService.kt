@@ -14,11 +14,10 @@ import android.os.Looper
  * The service is bound by [LocalPlayerChannel] and outlives Flutter route rebuilds. It owns the
  * Sendspin connection lifecycle boundary while Flutter widgets continue to send only intent-level
  * playback operations through the Dart adapter seam. Transport open, hello/goodbye, deterministic
- * reconnect, and connection-state aggregation run on a dedicated serial background thread so
- * MethodChannel calls never block Android's main thread on transport locks or callbacks. The
- * service intentionally does not implement audio output, browse, or intent-to-Sendspin controller
- * command mapping. Clock synchronization and stream buffering are native-only diagnostics and
- * scheduling inputs for later audio output, not Flutter UI state mapping.
+ * reconnect, connection-state aggregation, clock synchronization, stream buffering, and Android PCM
+ * audio writes run on a dedicated serial background thread so MethodChannel calls never block
+ * Android's main thread on transport locks or callbacks. The service intentionally does not
+ * implement browse or intent-to-Sendspin controller command mapping.
  */
 class LocalPlayerService : Service() {
     private val binder = LocalBinder()
@@ -46,6 +45,7 @@ class LocalPlayerService : Service() {
             transportFactory = OkHttpWebSocketSendspinTransportFactory(),
             onSnapshot = ::handleControllerSnapshot,
             queue = SendspinConnectionQueue { task -> controllerHandler.post(task) },
+            audioPipeline = SendspinAudioPipeline(AndroidPcmAudioSinkFactory()),
         )
     }
 
@@ -89,11 +89,11 @@ class LocalPlayerService : Service() {
     /**
      * Asynchronously requests an explicit local-player disconnect.
      *
-     * The controller sends `client/goodbye` when a client hello has already been sent, closes the
-     * transport with normal WebSocket closure, emits a disconnected snapshot on success, and
-     * completes with `{ accepted: true }`. Goodbye or close failures complete with
-     * `{ accepted: false, error: { code: LOCAL_PLAYER_TRANSPORT_ERROR, ... } }` and emit a failed
-     * snapshot. Flutter route unmounts do not call this method.
+     * The controller sends `client/goodbye` when a client hello has already been sent, releases the
+     * active PCM audio pipeline, closes the transport with normal WebSocket closure, emits a
+     * disconnected snapshot on success, and completes with `{ accepted: true }`. Goodbye, audio
+     * release, or close failures complete with a typed error and emit a failed snapshot. Flutter
+     * route unmounts do not call this method.
      */
     fun disconnect(complete: (Map<String, Any?>) -> Unit) {
         controller.disconnect { error ->

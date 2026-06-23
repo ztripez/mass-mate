@@ -73,6 +73,14 @@ data class SendspinStreamBufferSnapshot(
     }
 }
 
+/** Result of parsing and accepting or dropping one binary Sendspin frame. */
+data class SendspinStreamBufferReceiveResult(
+    /** Updated stream buffer diagnostics after the frame was processed. */
+    val snapshot: SendspinStreamBufferSnapshot,
+    /** Accepted frame ready for the audio pipeline, or `null` when the frame was dropped. */
+    val acceptedFrame: SendspinAudioFrame? = null,
+)
+
 /** Configuration for native Sendspin stream buffering. */
 data class SendspinStreamBufferConfig(
     /** Positive maximum number of frames retained before newer frames are dropped. */
@@ -231,34 +239,60 @@ class SendspinStreamBuffer(
      * frames throw [SendspinConnectionException] with `LOCAL_PLAYER_PROTOCOL_ERROR` before any
      * lifecycle drop handling.
      */
-    fun receiveBinary(bytes: ByteArray): SendspinStreamBufferSnapshot {
+    fun receiveBinary(bytes: ByteArray): SendspinStreamBufferSnapshot = receiveBinaryResult(bytes).snapshot
+
+    /**
+     * Parses and buffers [bytes], returning diagnostics and the accepted frame when audio may consume it.
+     *
+     * Dropped frames return `null` for [SendspinStreamBufferReceiveResult.acceptedFrame]. Malformed
+     * frames throw [SendspinConnectionException] before any lifecycle drop handling.
+     */
+    fun receiveBinaryResult(bytes: ByteArray): SendspinStreamBufferReceiveResult {
         val frame = SendspinBinaryFrameParser.parse(bytes)
         val active = activeStream
         if (active == null) {
             drop("no-active-stream")
-            return snapshot()
+            return SendspinStreamBufferReceiveResult(snapshot())
         }
         if (frame.streamId != active.streamId) {
             drop("stream-mismatch")
-            return snapshot()
+            return SendspinStreamBufferReceiveResult(snapshot())
         }
         if (frame.sequence in acceptedSequences) {
             drop("duplicate-sequence")
-            return snapshot()
+            return SendspinStreamBufferReceiveResult(snapshot())
         }
         if (framesByKey.size >= config.maxBufferedFrames) {
             drop("buffer-full")
-            return snapshot()
+            return SendspinStreamBufferReceiveResult(snapshot())
         }
         recordMissingFrames(frame.sequence)
         acceptedSequences.add(frame.sequence)
         framesByKey[FrameKey(frame.timestampMs, frame.sequence)] = frame
         lastDropReason = null
-        return snapshot()
+        return SendspinStreamBufferReceiveResult(snapshot(), frame)
     }
 
     /** Returns buffered frames in deterministic timestamp then sequence order. */
     fun bufferedFrames(): List<SendspinAudioFrame> = framesByKey.values.toList()
+
+    /**
+     * Removes [frame] after ownership has been transferred to the audio pipeline.
+     *
+     * @return Updated stream diagnostics after the frame is consumed.
+     * @throws SendspinConnectionException when [frame] is not currently retained by this buffer.
+     */
+    fun consume(frame: SendspinAudioFrame): SendspinStreamBufferSnapshot {
+        val key = FrameKey(frame.timestampMs, frame.sequence)
+        val removed = framesByKey.remove(key)
+        if (removed == null || removed.streamId != frame.streamId) {
+            throw SendspinProtocolJson.protocolError(
+                "Sendspin stream buffer cannot consume a frame it does not own.",
+                mapOf("streamId" to frame.streamId, "timestampMs" to frame.timestampMs, "sequence" to frame.sequence),
+            )
+        }
+        return snapshot()
+    }
 
     /** Returns the current stream/buffer debug snapshot. */
     fun snapshot(): SendspinStreamBufferSnapshot {
